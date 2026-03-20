@@ -91,4 +91,5 @@ The playbook-librarian may update only the two sections below during normal task
 
 - 2026-03-20: Added repo-local skill and project-scoped subagent role files for staged maintenance, critic review, and Git-gated change analysis.
 - 2026-03-20: Standardized the canonical printer cleanup result shape and guarded service restart on actual stop, not initial state.
+- 2026-03-20: Aligned the canonical simple spool-cleanup pair so V7 `-WhatIf` no longer depends on `#Requires -RunAsAdministrator`, and both variants restart the spooler only after a successful stop.
 - Keep this section focused on durable repo guidance, not task-by-task narrative.

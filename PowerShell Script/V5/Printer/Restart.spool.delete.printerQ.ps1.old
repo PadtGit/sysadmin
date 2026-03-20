@@ -10,9 +10,10 @@ $RequireAdmin = $true
 $IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $ServiceName = 'Spooler'
 $SpoolDirectory = Join-Path -Path $env:SystemRoot -ChildPath 'System32\spool\PRINTERS'
+$TimeoutSeconds = 30
 $AllowedExtensions = @('.spl', '.shd')
 
-function Invoke-SimplePrintQueueCleanup {
+function Invoke-PrintQueueCleanup {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)]
@@ -28,6 +29,9 @@ function Invoke-SimplePrintQueueCleanup {
         [string]$SpoolDirectory,
 
         [Parameter(Mandatory = $true)]
+        [int]$TimeoutSeconds,
+
+        [Parameter(Mandatory = $true)]
         [string[]]$AllowedExtensions
     )
 
@@ -37,13 +41,12 @@ function Invoke-SimplePrintQueueCleanup {
 
     $Service = Get-Service -Name $ServiceName -ErrorAction Stop
     $ServiceWasRunning = $Service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running
-    $ServiceWasStopped = $false
     $DeletedCount = 0
     $Status = 'Completed'
 
     if ($ServiceWasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop service')) {
         Stop-Service -Name $ServiceName -Force -ErrorAction Stop
-        $ServiceWasStopped = $true
+        (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds($TimeoutSeconds))
     }
 
     try {
@@ -57,8 +60,9 @@ function Invoke-SimplePrintQueueCleanup {
         }
     }
     finally {
-        if ($ServiceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
+        if ($ServiceWasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
             Start-Service -Name $ServiceName -ErrorAction Stop
+            (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds($TimeoutSeconds))
         }
     }
 
@@ -71,16 +75,18 @@ function Invoke-SimplePrintQueueCleanup {
         QueuePath    = $SpoolDirectory
         FileCount    = $Files.Count
         DeletedCount = $DeletedCount
+        ServiceWasUp = $ServiceWasRunning
         Status       = $Status
     }
 }
 
 try {
-    Invoke-SimplePrintQueueCleanup `
+    Invoke-PrintQueueCleanup `
         -RequireAdmin $RequireAdmin `
         -IsAdministrator $IsAdministrator `
         -ServiceName $ServiceName `
         -SpoolDirectory $SpoolDirectory `
+        -TimeoutSeconds $TimeoutSeconds `
         -AllowedExtensions $AllowedExtensions
 }
 catch {
