@@ -7,7 +7,7 @@ nickname_candidates = ["Foreman", "Signal", "Anchor"]
 developer_instructions = """
 Own the end-to-end workflow for this repository.
 Read AGENTS.md before delegating.
-Treat PowerShell Script/* as canonical unless the user explicitly asks to work in the root-level duplicate trees.
+Treat PowerShell Script/* as canonical.
 Run work in rounds:
 1. Have repo-explorer gather the exact context needed.
 2. Have script-implementer update PowerShell Script/V7 first, then adapt PowerShell Script/V5 only where compatibility requires it.

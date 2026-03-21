@@ -1,83 +1,141 @@
 #Requires -Version 7.0
-#Requires -RunAsAdministrator
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param()
 
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
+$RequireAdmin = $true
+$IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $ScriptConfig = @{
-    InstallerPath = Join-Path -Path $env:SystemRoot -ChildPath 'Installer'
-    BackupFolder  = 'C:\InstallerOrphans'
-    RegistryRoot  = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData'
+    InstallerPath     = Join-Path -Path $env:SystemRoot -ChildPath 'Installer'
+    BackupFolder      = 'C:\InstallerOrphans'
+    RegistryRoot      = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData'
+    AllowedExtensions = @('.msi', '.msp')
 }
 
-function Invoke-MoveInstallerOrphans {
-    [CmdletBinding(SupportsShouldProcess)]
+function Invoke-InstallerOrphanMove {
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
+        [bool]$RequireAdmin,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$IsAdministrator,
+
+        [Parameter(Mandatory = $true)]
         [string]$InstallerPath,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [string]$BackupFolder,
 
-        [Parameter(Mandatory)]
-        [string]$RegistryRoot
+        [Parameter(Mandatory = $true)]
+        [string]$RegistryRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$AllowedExtensions
     )
 
-    if (-not (Test-Path -LiteralPath $BackupFolder)) {
-        New-Item -ItemType Directory -Path $BackupFolder -Force | Out-Null
+    if ($RequireAdmin -and -not $WhatIfPreference -and -not $IsAdministrator) {
+        throw 'Run this script in an elevated PowerShell 7 session.'
     }
 
-    $knownPackages = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    Get-ChildItem -Path $RegistryRoot -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-        $packagePath = (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).LocalPackage
-        if (-not [string]::IsNullOrWhiteSpace($packagePath)) {
-            [void]$knownPackages.Add($packagePath)
+    if (-not (Test-Path -LiteralPath $InstallerPath -PathType Container)) {
+        throw ('Installer path not found: {0}' -f $InstallerPath)
+    }
+
+    if (-not (Test-Path -LiteralPath $BackupFolder -PathType Container)) {
+        if ($PSCmdlet.ShouldProcess($BackupFolder, 'Create directory')) {
+            New-Item -ItemType Directory -Path $BackupFolder -Force | Out-Null
         }
     }
 
-    if ($knownPackages.Count -eq 0) {
-        throw 'No installer package references were found. Aborting to avoid moving valid files.'
+    $KnownPackages = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $MovedCount = 0
+    $OrphanCount = 0
+    $Status = 'Completed'
+
+    foreach ($RegistryItem in @(Get-ChildItem -Path $RegistryRoot -Recurse -ErrorAction SilentlyContinue)) {
+        try {
+            $LocalPackage = [string](Get-ItemProperty -LiteralPath $RegistryItem.PSPath -ErrorAction Stop).LocalPackage
+        }
+        catch {
+            $LocalPackage = ''
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($LocalPackage)) {
+            [void]$KnownPackages.Add($LocalPackage)
+        }
     }
 
-    $installerFiles = @(
+    if ($KnownPackages.Count -eq 0) {
+        if ($WhatIfPreference) {
+            return [pscustomobject]@{
+                InstallerPath = $InstallerPath
+                BackupFolder  = $BackupFolder
+                FileCount     = 0
+                OrphanCount   = 0
+                MovedCount    = 0
+                Status        = 'Skipped'
+                Reason        = 'NoReferencesFound'
+            }
+        }
+
+        throw 'No installer references were found.'
+    }
+
+    $InstallerFiles = @(
         Get-ChildItem -LiteralPath $InstallerPath -File -ErrorAction Stop |
-            Where-Object { $_.Extension -in '.msi', '.msp' }
+            Where-Object { $AllowedExtensions -contains $_.Extension.ToLowerInvariant() }
     )
 
-    $orphanedFiles = @(
-        $installerFiles | Where-Object { -not $knownPackages.Contains($_.FullName) }
-    )
-
-    $movedCount = 0
-    foreach ($file in $orphanedFiles) {
-        $destination = Join-Path -Path $BackupFolder -ChildPath $file.Name
-
-        if (Test-Path -LiteralPath $destination) {
+    foreach ($InstallerFile in $InstallerFiles) {
+        if ($KnownPackages.Contains($InstallerFile.FullName)) {
             continue
         }
 
-        if ($PSCmdlet.ShouldProcess($file.FullName, 'Move installer file')) {
-            Move-Item -LiteralPath $file.FullName -Destination $destination -ErrorAction Stop
-            $movedCount++
+        $OrphanCount++
+        $DestinationPath = Join-Path -Path $BackupFolder -ChildPath $InstallerFile.Name
+
+        if (Test-Path -LiteralPath $DestinationPath) {
+            $DestinationPath = Join-Path -Path $BackupFolder -ChildPath (
+                '{0}_{1}{2}' -f
+                [System.IO.Path]::GetFileNameWithoutExtension($InstallerFile.Name),
+                (Get-Date -Format 'yyyyMMddHHmmssfff'),
+                [System.IO.Path]::GetExtension($InstallerFile.Name)
+            )
         }
+
+        if ($PSCmdlet.ShouldProcess($InstallerFile.FullName, ('Move to {0}' -f $DestinationPath))) {
+            Move-Item -LiteralPath $InstallerFile.FullName -Destination $DestinationPath -Force -ErrorAction Stop
+            $MovedCount++
+        }
+    }
+
+    if ($WhatIfPreference) {
+        $Status = 'WhatIf'
     }
 
     [pscustomobject]@{
         InstallerPath = $InstallerPath
         BackupFolder  = $BackupFolder
-        OrphanCount   = $orphanedFiles.Count
-        MovedCount    = $movedCount
+        FileCount     = $InstallerFiles.Count
+        OrphanCount   = $OrphanCount
+        MovedCount    = $MovedCount
+        Status        = $Status
+        Reason        = ''
     }
 }
 
 try {
-    Invoke-MoveInstallerOrphans `
+    Invoke-InstallerOrphanMove `
+        -RequireAdmin $RequireAdmin `
+        -IsAdministrator $IsAdministrator `
         -InstallerPath $ScriptConfig.InstallerPath `
         -BackupFolder $ScriptConfig.BackupFolder `
-        -RegistryRoot $ScriptConfig.RegistryRoot
+        -RegistryRoot $ScriptConfig.RegistryRoot `
+        -AllowedExtensions $ScriptConfig.AllowedExtensions
 }
 catch {
     Write-Error $_.Exception.Message

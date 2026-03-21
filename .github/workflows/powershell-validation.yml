@@ -1,0 +1,69 @@
+name: PowerShell Validation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'PowerShell Script/**'
+      - 'tests/**'
+      - 'tools/**'
+      - '.github/workflows/powershell-validation.yml'
+      - 'AGENTS.md'
+      - 'SKILL.md'
+      - 'docs/**'
+  pull_request:
+    paths:
+      - 'PowerShell Script/**'
+      - 'tests/**'
+      - 'tools/**'
+      - '.github/workflows/powershell-validation.yml'
+      - 'AGENTS.md'
+      - 'SKILL.md'
+      - 'docs/**'
+
+jobs:
+  validate:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install test and analyzer modules
+        shell: pwsh
+        run: |
+          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\Invoke-PSScriptAnalyzer.ps1
+
+      - name: Run Pester
+        shell: pwsh
+        run: |
+          $resultPath = Join-Path $PWD 'artifacts\validation\pester-results.xml'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Path $resultPath -Parent) | Out-Null
+          Invoke-Pester -Path .\tests -Output Detailed -CI -Configuration @{
+            TestResult = @{
+              Enabled = $true
+              OutputPath = $resultPath
+              OutputFormat = 'NUnitXml'
+            }
+          }
+
+      - name: Run trusted WhatIf smoke checks
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\V7\Printer\Restart.Spool.DeletePrinterQSimple.ps1' -WhatIf
+          pwsh -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\V7\windows-maintenance\Reset.Network.RebootPC.ps1' -WhatIf
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\V5\Printer\Restart.Spool.DeletePrinterQSimple.ps1' -WhatIf
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\V5\windows-maintenance\Nettoyage.Avance.Windows.Sauf.logserreur.ps1' -WhatIf
+
+      - name: Upload validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: powershell-validation
+          path: artifacts/validation/
+          if-no-files-found: ignore

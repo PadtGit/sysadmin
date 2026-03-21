@@ -1,12 +1,13 @@
 #Requires -Version 7.0
-#Requires -RunAsAdministrator
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param()
 
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
+$RequireAdmin = $true
+$IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $ScriptConfig = @{
     InstallerPath = 'C:\Windows\Installer'
     BackupPath    = 'C:\FichierOrphelin'
@@ -15,8 +16,14 @@ $ScriptConfig = @{
 }
 
 function Invoke-MoveOrphanedInstallerFiles {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
+        [Parameter(Mandatory = $true)]
+        [bool]$RequireAdmin,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$IsAdministrator,
+
         [Parameter(Mandatory)]
         [string]$InstallerPath,
 
@@ -30,17 +37,24 @@ function Invoke-MoveOrphanedInstallerFiles {
         [int]$PatchState
     )
 
+    if ($RequireAdmin -and -not $WhatIfPreference -and -not $IsAdministrator) {
+        throw 'Run this script in an elevated PowerShell 7 session.'
+    }
+
     if (-not (Test-Path -LiteralPath $InstallerPath)) {
         throw 'Installer path was not found.'
     }
 
     if (-not (Test-Path -LiteralPath $BackupPath)) {
-        New-Item -ItemType Directory -Path $BackupPath -Force | Out-Null
+        if ($PSCmdlet.ShouldProcess($BackupPath, 'Create directory')) {
+            New-Item -ItemType Directory -Path $BackupPath -Force | Out-Null
+        }
     }
 
     $references = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $installer = $null
     $movedCount = 0
+    $status = 'Completed'
 
     try {
         $installer = New-Object -ComObject WindowsInstaller.Installer
@@ -115,6 +129,18 @@ function Invoke-MoveOrphanedInstallerFiles {
     }
 
     if ($references.Count -eq 0) {
+        if ($WhatIfPreference) {
+            return [pscustomobject]@{
+                InstallerPath = $InstallerPath
+                BackupPath    = $BackupPath
+                FileCount     = 0
+                OrphanCount   = 0
+                MovedCount    = 0
+                Status        = 'Skipped'
+                Reason        = 'NoReferencesFound'
+            }
+        }
+
         throw 'No Windows Installer references were found. Aborting.'
     }
 
@@ -145,17 +171,25 @@ function Invoke-MoveOrphanedInstallerFiles {
         }
     }
 
+    if ($WhatIfPreference) {
+        $status = 'WhatIf'
+    }
+
     [pscustomobject]@{
         InstallerPath = $InstallerPath
         BackupPath    = $BackupPath
         FileCount     = $installerFiles.Count
         OrphanCount   = $orphanedFiles.Count
         MovedCount    = $movedCount
+        Status        = $status
+        Reason        = ''
     }
 }
 
 try {
     Invoke-MoveOrphanedInstallerFiles `
+        -RequireAdmin $RequireAdmin `
+        -IsAdministrator $IsAdministrator `
         -InstallerPath $ScriptConfig.InstallerPath `
         -BackupPath $ScriptConfig.BackupPath `
         -Contexts $ScriptConfig.Contexts `

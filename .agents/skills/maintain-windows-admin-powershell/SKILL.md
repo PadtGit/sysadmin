@@ -13,8 +13,7 @@ Maintain this repo with a staged workflow that starts from the canonical nested 
 
 1. Read `AGENTS.md` before making changes.
 2. Treat `PowerShell Script/*` as canonical.
-3. Treat the root-level `V5/*` and `V7/*` trees as duplicates unless the user explicitly asks to work there.
-4. Prefer narrow, behavior-preserving edits over bulk rewrites.
+3. Prefer narrow, behavior-preserving edits over bulk rewrites.
 
 ## Workflow
 
@@ -36,9 +35,8 @@ Maintain this repo with a staged workflow that starts from the canonical nested 
 
 ### Round 3: Change Analysis
 
-- Only do recent-commit or last-N-days analysis when `.git` metadata exists and `git.exe` is available.
+- Use Git metadata for recent-commit or last-N-days analysis.
 - Do not substitute file timestamps for commit windows.
-- If Git is unavailable, stop and say that the requested workflow is Git-gated in this repo.
 
 ## Agent Handoffs
 
@@ -52,4 +50,4 @@ Maintain this repo with a staged workflow that starts from the canonical nested 
 
 - Summaries should state the files changed, the validation command or check run, the critic result, and any new durable playbook note.
 - If no stable repo knowledge was discovered, do not force an `AGENTS.md` edit.
-- Do not promise automated test-gap discovery, new tests, `$yeet` PR workflows, or commit-window benchmarking while this repo lacks a Git checkout and test harness.
+- Generated validation output belongs under `artifacts/validation/`, not in tracked repo result files.

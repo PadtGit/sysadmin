@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param()
 
 Set-StrictMode -Version 3.0
@@ -15,21 +15,21 @@ $ScriptConfig = @{
 }
 
 function Invoke-ClearPrintQueueSimple {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [bool]$RequireAdmin,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [bool]$IsAdministrator,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [string]$ServiceName,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [string]$SpoolDirectory,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [string[]]$AllowedExtensions
     )
 
@@ -37,39 +37,46 @@ function Invoke-ClearPrintQueueSimple {
         throw 'Run this script in an elevated PowerShell 7 session.'
     }
 
-    $service = Get-Service -Name $ServiceName -ErrorAction Stop
-    $serviceWasRunning = $service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running
-    $serviceWasStopped = $false
+    $Service = Get-Service -Name $ServiceName -ErrorAction Stop
+    $ServiceWasRunning = $Service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running
+    $ServiceWasStopped = $false
+    $DeletedCount = 0
+    $Status = 'Completed'
+
+    if ($ServiceWasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop service')) {
+        Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+        $ServiceWasStopped = $true
+    }
 
     try {
-        $deletedCount = 0
-
-        if ($serviceWasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop service')) {
-            Stop-Service -Name $ServiceName -Force -ErrorAction Stop
-            $serviceWasStopped = $true
-        }
-
-        $files = @(
+        $Files = @(
             Get-ChildItem -LiteralPath $SpoolDirectory -File -ErrorAction SilentlyContinue |
                 Where-Object { $AllowedExtensions -contains $_.Extension.ToLowerInvariant() }
         )
 
-        foreach ($file in $files) {
-            if ($PSCmdlet.ShouldProcess($file.FullName, 'Remove spool file')) {
-                Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
-                $deletedCount++
+        foreach ($File in $Files) {
+            if ($PSCmdlet.ShouldProcess($File.FullName, 'Remove spool file')) {
+                Remove-Item -LiteralPath $File.FullName -Force -ErrorAction Stop
+                $DeletedCount++
             }
-        }
-
-        [pscustomobject]@{
-            DeletedFiles = $deletedCount
-            ServiceName  = $ServiceName
         }
     }
     finally {
-        if ($serviceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
+        if ($ServiceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
             Start-Service -Name $ServiceName -ErrorAction Stop
         }
+    }
+
+    if ($WhatIfPreference) {
+        $Status = 'WhatIf'
+    }
+
+    [pscustomobject]@{
+        ServiceName  = $ServiceName
+        QueuePath    = $SpoolDirectory
+        FileCount    = $Files.Count
+        DeletedCount = $DeletedCount
+        Status       = $Status
     }
 }
 

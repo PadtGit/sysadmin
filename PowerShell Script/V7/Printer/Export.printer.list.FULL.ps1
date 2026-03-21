@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param()
 
 Set-StrictMode -Version 3.0
@@ -29,52 +29,58 @@ $ScriptConfig = @{
 }
 
 function Invoke-ExportPrinterListFull {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [string]$OutputDirectory,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [string]$OutputFileName,
 
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [string[]]$Properties
     )
 
-    if (-not (Test-Path -LiteralPath $OutputDirectory)) {
-        New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+    $OutputPath = Join-Path -Path $OutputDirectory -ChildPath $OutputFileName
+
+    if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
+        if ($PSCmdlet.ShouldProcess($OutputDirectory, 'Create directory')) {
+            New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+        }
     }
 
-    $outputPath = Join-Path -Path $OutputDirectory -ChildPath $OutputFileName
-
     try {
-        $printers = Get-Printer -ErrorAction Stop | Sort-Object -Property Name
+        $Printers = @(
+            Get-Printer -ErrorAction Stop |
+                Sort-Object -Property Name
+        )
     }
     catch {
         if ($WhatIfPreference) {
-            [pscustomobject]@{
-                OutputPath    = $outputPath
+            return [pscustomobject]@{
+                OutputPath    = $OutputPath
                 PrinterCount  = 0
                 ExportProfile = 'Full'
                 Status        = 'Skipped'
+                Reason        = 'GetPrinterUnavailable'
             }
-            return
         }
 
         throw
     }
 
-    if ($PSCmdlet.ShouldProcess($outputPath, 'Export printer list')) {
-        $printers |
+    if ($PSCmdlet.ShouldProcess($OutputPath, 'Export printer list')) {
+        $Printers |
             Select-Object -Property $Properties |
-            Export-Csv -Path $outputPath -NoTypeInformation -Encoding utf8
+            Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
     }
 
     [pscustomobject]@{
-        OutputPath    = $outputPath
-        PrinterCount  = $printers.Count
+        OutputPath    = $OutputPath
+        PrinterCount  = $Printers.Count
         ExportProfile = 'Full'
-        Status        = 'Ready'
+        Status        = $(if ($WhatIfPreference) { 'WhatIf' } else { 'Completed' })
+        Reason        = ''
     }
 }
 

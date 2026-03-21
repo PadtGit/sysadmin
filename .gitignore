@@ -1,0 +1,4 @@
+artifacts/validation/*
+!artifacts/validation/.gitkeep
+TestResults/
+PesterResults.xml

@@ -1,6 +1,6 @@
 #Requires -Version 7.0
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param()
 
 Set-StrictMode -Version 3.0
@@ -11,40 +11,52 @@ $ScriptConfig = @{
 }
 
 function Invoke-RemoveOfflinePrinters {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory = $true)]
         [string]$PrinterStatus
     )
 
     try {
-        $printers = @(
+        $Printers = @(
             Get-Printer -ErrorAction Stop |
                 Where-Object { [string]$_.PrinterStatus -eq $PrinterStatus }
         )
     }
     catch {
         if ($WhatIfPreference) {
-            Write-Output 'Skipped because printers could not be queried in this session.'
-            return
+            return [pscustomobject]@{
+                PrinterStatus = $PrinterStatus
+                PrinterCount  = 0
+                RemovedCount  = 0
+                Status        = 'Skipped'
+                Reason        = 'GetPrinterUnavailable'
+            }
         }
 
         throw
     }
 
-    if ($printers.Count -eq 0) {
-        Write-Output 'No offline printers found.'
-        return
+    $RemovedCount = 0
+    $Status = 'Completed'
+
+    foreach ($Printer in $Printers) {
+        if ($PSCmdlet.ShouldProcess($Printer.Name, 'Remove printer')) {
+            Remove-Printer -Name $Printer.Name -Confirm:$false -ErrorAction Stop
+            $RemovedCount++
+        }
     }
 
-    foreach ($printer in $printers) {
-        if ($PSCmdlet.ShouldProcess($printer.Name, 'Remove printer')) {
-            Remove-Printer -Name $printer.Name -Confirm:$false -ErrorAction Stop
-            [pscustomobject]@{
-                Name   = $printer.Name
-                Action = 'Removed'
-            }
-        }
+    if ($WhatIfPreference) {
+        $Status = 'WhatIf'
+    }
+
+    [pscustomobject]@{
+        PrinterStatus = $PrinterStatus
+        PrinterCount  = $Printers.Count
+        RemovedCount  = $RemovedCount
+        Status        = $Status
+        Reason        = ''
     }
 }
 
