@@ -10,5 +10,9 @@ Describe 'V7 installer orphan cleanup contract' {
         $Content | Should Match 'Status'
         $Content | Should Match 'Reason'
         $Content | Should Match 'yyyyMMddHHmmssfff'
+        $Content | Should Match 'Quarantine\\InstallerOrphans'
+        $Content | Should Match 'Resolve-SecureDirectory'
+        $Content | Should Match 'Test-IsReparsePoint'
+        $Content | Should Not Match 'C:\\InstallerOrphans'
     }
 }

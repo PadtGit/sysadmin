@@ -6,22 +6,130 @@ param()
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
+$LocalApplicationDataPath = [Environment]::GetFolderPath('LocalApplicationData')
+
 $RequireAdmin = $true
 $IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $ScriptConfig = @{
-    CleanupPaths = @(
-        $env:TEMP,
-        (Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Temp'),
-        (Join-Path -Path $env:SystemRoot -ChildPath 'Temp'),
-        (Join-Path -Path $env:LOCALAPPDATA -ChildPath 'D3DSCache'),
-        (Join-Path -Path $env:SystemRoot -ChildPath 'SoftwareDistribution\DeliveryOptimization')
+    CleanupSpecs = @(
+        @{
+            Path         = Join-Path -Path $LocalApplicationDataPath -ChildPath 'Temp'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path -Path $LocalApplicationDataPath -ChildPath 'D3DSCache'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path -Path $env:SystemRoot -ChildPath 'Temp'
+            AllowedRoots = @($env:SystemRoot)
+        },
+        @{
+            Path         = Join-Path -Path $env:SystemRoot -ChildPath 'SoftwareDistribution\DeliveryOptimization'
+            AllowedRoots = @(Join-Path -Path $env:SystemRoot -ChildPath 'SoftwareDistribution')
+        }
     )
-    ThumbCacheDirectory = Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Microsoft\Windows\Explorer'
+    ThumbCacheDirectory = Join-Path -Path $LocalApplicationDataPath -ChildPath 'Microsoft\Windows\Explorer'
     ThumbCacheFilter    = 'thumbcache_*.db'
     WindowsOldPath      = Join-Path -Path $env:SystemDrive -ChildPath 'Windows.old'
     RemoveWindowsOld    = $false
     RunComponentCleanup = $true
     DismPath            = Join-Path -Path $env:SystemRoot -ChildPath 'System32\Dism.exe'
+}
+
+function Test-PathWithinAllowedRoot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$AllowedRoots
+    )
+
+    $NormalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    foreach ($AllowedRoot in $AllowedRoots) {
+        if ([string]::IsNullOrWhiteSpace($AllowedRoot)) {
+            continue
+        }
+
+        $NormalizedRoot = [System.IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\')
+        if ($NormalizedPath.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+
+        if ($NormalizedPath.StartsWith(($NormalizedRoot + '\'), [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-IsReparsePoint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileSystemInfo]$Item
+    )
+
+    return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+}
+
+function Resolve-TrustedDirectoryPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$AllowedRoots
+    )
+
+    $NormalizedPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-PathWithinAllowedRoot -Path $NormalizedPath -AllowedRoots $AllowedRoots)) {
+        throw ('Directory path is outside the trusted root: {0}' -f $NormalizedPath)
+    }
+
+    foreach ($AllowedRoot in $AllowedRoots) {
+        if ([string]::IsNullOrWhiteSpace($AllowedRoot) -or -not (Test-Path -LiteralPath $AllowedRoot -PathType Container)) {
+            continue
+        }
+
+        $AllowedRootItem = Get-Item -LiteralPath $AllowedRoot -Force -ErrorAction Stop
+        if (Test-IsReparsePoint -Item $AllowedRootItem) {
+            throw ('Trusted root must not be a reparse point: {0}' -f $AllowedRootItem.FullName)
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $NormalizedPath -PathType Container)) {
+        return $null
+    }
+
+    $DirectoryItem = Get-Item -LiteralPath $NormalizedPath -Force -ErrorAction Stop
+    if (Test-IsReparsePoint -Item $DirectoryItem) {
+        throw ('Directory path must not be a reparse point: {0}' -f $DirectoryItem.FullName)
+    }
+
+    return $DirectoryItem.FullName
+}
+
+function Get-SafeChildItems {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    try {
+        $ChildItems = @(
+            Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop
+        )
+    }
+    catch {
+        return @()
+    }
+
+    return @(
+        $ChildItems |
+            Where-Object { -not (Test-IsReparsePoint -Item $_) }
+    )
 }
 
 function Invoke-AdvancedWindowsCleanup {
@@ -34,7 +142,7 @@ function Invoke-AdvancedWindowsCleanup {
         [bool]$IsAdministrator,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$CleanupPaths,
+        [object[]]$CleanupSpecs,
 
         [Parameter(Mandatory = $true)]
         [string]$ThumbCacheDirectory,
@@ -61,7 +169,7 @@ function Invoke-AdvancedWindowsCleanup {
 
     if ($WhatIfPreference -and -not $IsAdministrator) {
         return [pscustomobject]@{
-            CleanupPathCount = $CleanupPaths.Count
+            CleanupPathCount = $CleanupSpecs.Count
             RemovedCount     = 0
             RemoveWindowsOld = $RemoveWindowsOld
             ComponentCleanup = $RunComponentCleanup
@@ -73,19 +181,13 @@ function Invoke-AdvancedWindowsCleanup {
     $RemovedCount = 0
     $Status = 'Completed'
 
-    foreach ($CleanupPath in $CleanupPaths) {
-        if (-not (Test-Path -LiteralPath $CleanupPath -PathType Container)) {
+    foreach ($CleanupSpec in $CleanupSpecs) {
+        $CleanupPath = Resolve-TrustedDirectoryPath -Path $CleanupSpec.Path -AllowedRoots $CleanupSpec.AllowedRoots
+        if ([string]::IsNullOrWhiteSpace($CleanupPath)) {
             continue
         }
 
-        try {
-            $CleanupItems = @(
-                Get-ChildItem -LiteralPath $CleanupPath -Force -ErrorAction Stop
-            )
-        }
-        catch {
-            $CleanupItems = @()
-        }
+        $CleanupItems = Get-SafeChildItems -Path $CleanupPath
 
         foreach ($CleanupItem in $CleanupItems) {
             if ($PSCmdlet.ShouldProcess($CleanupItem.FullName, 'Remove item')) {
@@ -99,10 +201,12 @@ function Invoke-AdvancedWindowsCleanup {
         Clear-RecycleBin -Force -ErrorAction SilentlyContinue
     }
 
-    if (Test-Path -LiteralPath $ThumbCacheDirectory -PathType Container) {
+    $TrustedThumbCacheDirectory = Resolve-TrustedDirectoryPath -Path $ThumbCacheDirectory -AllowedRoots @($LocalApplicationDataPath)
+    if (-not [string]::IsNullOrWhiteSpace($TrustedThumbCacheDirectory)) {
         try {
             $ThumbCacheFiles = @(
-                Get-ChildItem -LiteralPath $ThumbCacheDirectory -File -Filter $ThumbCacheFilter -ErrorAction Stop
+                Get-ChildItem -LiteralPath $TrustedThumbCacheDirectory -File -Filter $ThumbCacheFilter -ErrorAction Stop |
+                    Where-Object { -not (Test-IsReparsePoint -Item $_) }
             )
         }
         catch {
@@ -117,9 +221,10 @@ function Invoke-AdvancedWindowsCleanup {
         }
     }
 
-    if ($RemoveWindowsOld -and (Test-Path -LiteralPath $WindowsOldPath -PathType Container)) {
-        if ($PSCmdlet.ShouldProcess($WindowsOldPath, 'Remove directory')) {
-            Remove-Item -LiteralPath $WindowsOldPath -Recurse -Force -ErrorAction Stop
+    $TrustedWindowsOldPath = Resolve-TrustedDirectoryPath -Path $WindowsOldPath -AllowedRoots @($env:SystemDrive)
+    if ($RemoveWindowsOld -and -not [string]::IsNullOrWhiteSpace($TrustedWindowsOldPath)) {
+        if ($PSCmdlet.ShouldProcess($TrustedWindowsOldPath, 'Remove directory')) {
+            Remove-Item -LiteralPath $TrustedWindowsOldPath -Recurse -Force -ErrorAction Stop
             $RemovedCount++
         }
     }
@@ -137,7 +242,7 @@ function Invoke-AdvancedWindowsCleanup {
     }
 
     [pscustomobject]@{
-        CleanupPathCount = $CleanupPaths.Count
+        CleanupPathCount = $CleanupSpecs.Count
         RemovedCount     = $RemovedCount
         RemoveWindowsOld = $RemoveWindowsOld
         ComponentCleanup = $RunComponentCleanup
@@ -150,7 +255,7 @@ try {
     Invoke-AdvancedWindowsCleanup `
         -RequireAdmin $RequireAdmin `
         -IsAdministrator $IsAdministrator `
-        -CleanupPaths $ScriptConfig.CleanupPaths `
+        -CleanupSpecs $ScriptConfig.CleanupSpecs `
         -ThumbCacheDirectory $ScriptConfig.ThumbCacheDirectory `
         -ThumbCacheFilter $ScriptConfig.ThumbCacheFilter `
         -WindowsOldPath $ScriptConfig.WindowsOldPath `

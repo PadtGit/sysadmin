@@ -6,12 +6,23 @@ param()
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
+$LocalApplicationDataPath = [Environment]::GetFolderPath('LocalApplicationData')
+
 $RequireAdmin = $true
 $IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-$CleanupPaths = @(
-    $env:TEMP,
-    (Join-Path -Path $env:SystemRoot -ChildPath 'Temp'),
-    (Join-Path -Path $env:SystemRoot -ChildPath 'Prefetch')
+$CleanupSpecs = @(
+    @{
+        Path         = Join-Path -Path $LocalApplicationDataPath -ChildPath 'Temp'
+        AllowedRoots = @($LocalApplicationDataPath)
+    },
+    @{
+        Path         = Join-Path -Path $env:SystemRoot -ChildPath 'Temp'
+        AllowedRoots = @($env:SystemRoot)
+    },
+    @{
+        Path         = Join-Path -Path $env:SystemRoot -ChildPath 'Prefetch'
+        AllowedRoots = @($env:SystemRoot)
+    }
 )
 $UpdateServiceName = 'wuauserv'
 $UpdateCachePath = Join-Path -Path $env:SystemRoot -ChildPath 'SoftwareDistribution\Download'
@@ -19,6 +30,99 @@ $ServiceTimeoutSeconds = 30
 $FlushDns = $true
 $ClearRecycleBin = $true
 $IpConfigPath = Join-Path -Path $env:SystemRoot -ChildPath 'System32\ipconfig.exe'
+
+function Test-PathWithinAllowedRoot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$AllowedRoots
+    )
+
+    $NormalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    foreach ($AllowedRoot in $AllowedRoots) {
+        if ([string]::IsNullOrWhiteSpace($AllowedRoot)) {
+            continue
+        }
+
+        $NormalizedRoot = [System.IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\')
+        if ($NormalizedPath.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+
+        if ($NormalizedPath.StartsWith(($NormalizedRoot + '\'), [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-IsReparsePoint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileSystemInfo]$Item
+    )
+
+    return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+}
+
+function Resolve-TrustedDirectoryPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$AllowedRoots
+    )
+
+    $NormalizedPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-PathWithinAllowedRoot -Path $NormalizedPath -AllowedRoots $AllowedRoots)) {
+        throw ('Directory path is outside the trusted root: {0}' -f $NormalizedPath)
+    }
+
+    foreach ($AllowedRoot in $AllowedRoots) {
+        if ([string]::IsNullOrWhiteSpace($AllowedRoot) -or -not (Test-Path -LiteralPath $AllowedRoot -PathType Container)) {
+            continue
+        }
+
+        $AllowedRootItem = Get-Item -LiteralPath $AllowedRoot -Force -ErrorAction Stop
+        if (Test-IsReparsePoint -Item $AllowedRootItem) {
+            throw ('Trusted root must not be a reparse point: {0}' -f $AllowedRootItem.FullName)
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $NormalizedPath -PathType Container)) {
+        return $null
+    }
+
+    $DirectoryItem = Get-Item -LiteralPath $NormalizedPath -Force -ErrorAction Stop
+    if (Test-IsReparsePoint -Item $DirectoryItem) {
+        throw ('Directory path must not be a reparse point: {0}' -f $DirectoryItem.FullName)
+    }
+
+    return $DirectoryItem.FullName
+}
+
+function Get-SafeChildItems {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    try {
+        $ChildItems = @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop)
+    }
+    catch {
+        return @()
+    }
+
+    return @(
+        $ChildItems |
+            Where-Object { -not (Test-IsReparsePoint -Item $_) }
+    )
+}
 
 function Invoke-WindowsCacheCleanup {
     [CmdletBinding(SupportsShouldProcess = $true)]
@@ -30,7 +134,7 @@ function Invoke-WindowsCacheCleanup {
         [bool]$IsAdministrator,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$CleanupPaths,
+        [object[]]$CleanupSpecs,
 
         [Parameter(Mandatory = $true)]
         [string]$UpdateServiceName,
@@ -55,6 +159,17 @@ function Invoke-WindowsCacheCleanup {
         throw 'Run this script in an elevated PowerShell 5.1 session.'
     }
 
+    if ($WhatIfPreference -and -not $IsAdministrator) {
+        return [pscustomobject]@{
+            CleanupPathCount = $CleanupSpecs.Count
+            RemovedCount     = 0
+            FlushDns         = $FlushDns
+            ClearRecycleBin  = $ClearRecycleBin
+            Status           = 'Skipped'
+            Reason           = 'AdminPreviewRequired'
+        }
+    }
+
     $Service = Get-Service -Name $UpdateServiceName -ErrorAction Stop
     $ServiceWasRunning = $Service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running
     $RemovedCount = 0
@@ -66,13 +181,9 @@ function Invoke-WindowsCacheCleanup {
     }
 
     try {
-        if (Test-Path -LiteralPath $UpdateCachePath -PathType Container) {
-            try {
-                $UpdateItems = @(Get-ChildItem -LiteralPath $UpdateCachePath -Force -ErrorAction Stop)
-            }
-            catch {
-                $UpdateItems = @()
-            }
+        $TrustedUpdateCachePath = Resolve-TrustedDirectoryPath -Path $UpdateCachePath -AllowedRoots @(Join-Path -Path $env:SystemRoot -ChildPath 'SoftwareDistribution')
+        if (-not [string]::IsNullOrWhiteSpace($TrustedUpdateCachePath)) {
+            $UpdateItems = Get-SafeChildItems -Path $TrustedUpdateCachePath
 
             foreach ($UpdateItem in $UpdateItems) {
                 if ($PSCmdlet.ShouldProcess($UpdateItem.FullName, 'Remove update cache item')) {
@@ -89,17 +200,13 @@ function Invoke-WindowsCacheCleanup {
         }
     }
 
-    foreach ($CleanupPath in $CleanupPaths) {
-        if (-not (Test-Path -LiteralPath $CleanupPath -PathType Container)) {
+    foreach ($CleanupSpec in $CleanupSpecs) {
+        $CleanupPath = Resolve-TrustedDirectoryPath -Path $CleanupSpec.Path -AllowedRoots $CleanupSpec.AllowedRoots
+        if ([string]::IsNullOrWhiteSpace($CleanupPath)) {
             continue
         }
 
-        try {
-            $CleanupItems = @(Get-ChildItem -LiteralPath $CleanupPath -Force -ErrorAction Stop)
-        }
-        catch {
-            $CleanupItems = @()
-        }
+        $CleanupItems = Get-SafeChildItems -Path $CleanupPath
 
         foreach ($CleanupItem in $CleanupItems) {
             if ($PSCmdlet.ShouldProcess($CleanupItem.FullName, 'Remove cache item')) {
@@ -126,7 +233,7 @@ function Invoke-WindowsCacheCleanup {
     }
 
     [pscustomobject]@{
-        CleanupPathCount = $CleanupPaths.Count
+        CleanupPathCount = $CleanupSpecs.Count
         RemovedCount     = $RemovedCount
         FlushDns         = $FlushDns
         ClearRecycleBin  = $ClearRecycleBin
@@ -138,7 +245,7 @@ try {
     Invoke-WindowsCacheCleanup `
         -RequireAdmin $RequireAdmin `
         -IsAdministrator $IsAdministrator `
-        -CleanupPaths $CleanupPaths `
+        -CleanupSpecs $CleanupSpecs `
         -UpdateServiceName $UpdateServiceName `
         -UpdateCachePath $UpdateCachePath `
         -ServiceTimeoutSeconds $ServiceTimeoutSeconds `

@@ -6,13 +6,134 @@ param()
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
+$CommonApplicationDataPath = [Environment]::GetFolderPath('CommonApplicationData')
+
 $RequireAdmin = $true
 $IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $ScriptConfig = @{
+    StorageRoot       = Join-Path -Path $CommonApplicationDataPath -ChildPath 'sysadmin-main'
     InstallerPath     = Join-Path -Path $env:SystemRoot -ChildPath 'Installer'
-    BackupFolder      = 'C:\InstallerOrphans'
+    BackupFolder      = Join-Path -Path $CommonApplicationDataPath -ChildPath 'sysadmin-main\Quarantine\InstallerOrphans'
     RegistryRoot      = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData'
     AllowedExtensions = @('.msi', '.msp')
+}
+
+function Test-PathWithinAllowedRoot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$AllowedRoots
+    )
+
+    $NormalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    foreach ($AllowedRoot in $AllowedRoots) {
+        if ([string]::IsNullOrWhiteSpace($AllowedRoot)) {
+            continue
+        }
+
+        $NormalizedRoot = [System.IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\')
+        if ($NormalizedPath.Equals($NormalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+
+        if ($NormalizedPath.StartsWith(($NormalizedRoot + '\'), [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-IsReparsePoint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileSystemInfo]$Item
+    )
+
+    return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+}
+
+function Set-RestrictedDirectoryAcl {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $Directory = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if (-not $Directory.PSIsContainer) {
+        throw ('Secure directory path must be a directory: {0}' -f $Path)
+    }
+
+    if (Test-IsReparsePoint -Item $Directory) {
+        throw ('Secure directory path must not be a reparse point: {0}' -f $Path)
+    }
+
+    $CurrentUserSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $AdministratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    $SystemSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+    $InheritanceFlags = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    $PropagationFlags = [System.Security.AccessControl.PropagationFlags]::None
+    $Rights = [System.Security.AccessControl.FileSystemRights]::FullControl
+    $AccessType = [System.Security.AccessControl.AccessControlType]::Allow
+    $Acl = [System.Security.AccessControl.DirectorySecurity]::new()
+    $Acl.SetAccessRuleProtection($true, $false)
+
+    foreach ($SidGroup in @($CurrentUserSid, $AdministratorsSid, $SystemSid) | Group-Object Value) {
+        $Rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $SidGroup.Group[0],
+            $Rights,
+            $InheritanceFlags,
+            $PropagationFlags,
+            $AccessType
+        )
+        [void]$Acl.AddAccessRule($Rule)
+    }
+
+    Set-Acl -LiteralPath $Directory.FullName -AclObject $Acl
+}
+
+function Resolve-SecureDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$AllowedRoots
+    )
+
+    $NormalizedPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-PathWithinAllowedRoot -Path $NormalizedPath -AllowedRoots $AllowedRoots)) {
+        throw ('Directory path is outside the trusted root: {0}' -f $NormalizedPath)
+    }
+
+    foreach ($AllowedRoot in $AllowedRoots) {
+        if ([string]::IsNullOrWhiteSpace($AllowedRoot) -or -not (Test-Path -LiteralPath $AllowedRoot -PathType Container)) {
+            continue
+        }
+
+        $AllowedRootItem = Get-Item -LiteralPath $AllowedRoot -Force -ErrorAction Stop
+        if (Test-IsReparsePoint -Item $AllowedRootItem) {
+            throw ('Trusted root must not be a reparse point: {0}' -f $AllowedRootItem.FullName)
+        }
+    }
+
+    if (Test-Path -LiteralPath $NormalizedPath -PathType Container) {
+        $DirectoryItem = Get-Item -LiteralPath $NormalizedPath -Force -ErrorAction Stop
+        if (Test-IsReparsePoint -Item $DirectoryItem) {
+            throw ('Directory path must not be a reparse point: {0}' -f $NormalizedPath)
+        }
+    }
+    elseif (-not $WhatIfPreference) {
+        New-Item -ItemType Directory -Path $NormalizedPath -Force | Out-Null
+    }
+
+    if (-not $WhatIfPreference -and (Test-Path -LiteralPath $NormalizedPath -PathType Container)) {
+        Set-RestrictedDirectoryAcl -Path $NormalizedPath
+    }
+
+    return $NormalizedPath
 }
 
 function Invoke-InstallerOrphanMove {
@@ -45,11 +166,12 @@ function Invoke-InstallerOrphanMove {
         throw ('Installer path not found: {0}' -f $InstallerPath)
     }
 
-    if (-not (Test-Path -LiteralPath $BackupFolder -PathType Container)) {
-        if ($PSCmdlet.ShouldProcess($BackupFolder, 'Create directory')) {
-            New-Item -ItemType Directory -Path $BackupFolder -Force | Out-Null
-        }
+    $InstallerDirectory = Get-Item -LiteralPath $InstallerPath -Force -ErrorAction Stop
+    if (Test-IsReparsePoint -Item $InstallerDirectory) {
+        throw ('Installer path must not be a reparse point: {0}' -f $InstallerDirectory.FullName)
     }
+
+    $SecureBackupFolder = Resolve-SecureDirectory -Path $BackupFolder -AllowedRoots @($ScriptConfig.StorageRoot)
 
     $KnownPackages = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $MovedCount = 0
@@ -87,7 +209,7 @@ function Invoke-InstallerOrphanMove {
 
     $InstallerFiles = @(
         Get-ChildItem -LiteralPath $InstallerPath -File -ErrorAction Stop |
-            Where-Object { $AllowedExtensions -contains $_.Extension.ToLowerInvariant() }
+            Where-Object { $AllowedExtensions -contains $_.Extension.ToLowerInvariant() -and -not (Test-IsReparsePoint -Item $_) }
     )
 
     foreach ($InstallerFile in $InstallerFiles) {
@@ -96,10 +218,10 @@ function Invoke-InstallerOrphanMove {
         }
 
         $OrphanCount++
-        $DestinationPath = Join-Path -Path $BackupFolder -ChildPath $InstallerFile.Name
+        $DestinationPath = Join-Path -Path $SecureBackupFolder -ChildPath $InstallerFile.Name
 
         if (Test-Path -LiteralPath $DestinationPath) {
-            $DestinationPath = Join-Path -Path $BackupFolder -ChildPath (
+            $DestinationPath = Join-Path -Path $SecureBackupFolder -ChildPath (
                 '{0}_{1}{2}' -f
                 [System.IO.Path]::GetFileNameWithoutExtension($InstallerFile.Name),
                 (Get-Date -Format 'yyyyMMddHHmmssfff'),
@@ -119,7 +241,7 @@ function Invoke-InstallerOrphanMove {
 
     [pscustomobject]@{
         InstallerPath = $InstallerPath
-        BackupFolder  = $BackupFolder
+        BackupFolder  = $SecureBackupFolder
         FileCount     = $InstallerFiles.Count
         OrphanCount   = $OrphanCount
         MovedCount    = $MovedCount

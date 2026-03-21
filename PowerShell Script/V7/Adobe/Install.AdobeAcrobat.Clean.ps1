@@ -7,11 +7,18 @@ param()
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
+$CommonApplicationDataPath = [Environment]::GetFolderPath('CommonApplicationData')
+
 $ScriptConfig = @{
-    PackagePath         = 'C:\Install\Adobe\AcrobatInstaller.msi'
-    PackageArguments    = ''
-    LogDirectory        = 'C:\Temp\AdobeAcrobat'
-    ProductNamePatterns = @(
+    PackagePath              = 'C:\Install\Adobe\AcrobatInstaller.msi'
+    PackageArguments         = ''
+    StorageRoot              = Join-Path -Path $CommonApplicationDataPath -ChildPath 'sysadmin-main'
+    LogDirectory             = Join-Path -Path $CommonApplicationDataPath -ChildPath 'sysadmin-main\Logs\AdobeAcrobat'
+    TrustedPublisherPatterns = @(
+        'Adobe*'
+    )
+    MsiexecPath              = Join-Path -Path $env:SystemRoot -ChildPath 'System32\msiexec.exe'
+    ProductNamePatterns      = @(
         'Adobe Acrobat*',
         'Adobe Acrobat Reader*',
         'Adobe Reader*',
@@ -32,6 +39,158 @@ $ScriptConfig = @{
     SuccessExitCodes    = @(0, 1641, 3010)
 }
 
+function Test-PathWithinAllowedRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string[]]$AllowedRoots
+    )
+
+    $normalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    foreach ($allowedRoot in $AllowedRoots) {
+        if ([string]::IsNullOrWhiteSpace($allowedRoot)) {
+            continue
+        }
+
+        $normalizedRoot = [System.IO.Path]::GetFullPath($allowedRoot).TrimEnd('\')
+        if ($normalizedPath.Equals($normalizedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+
+        if ($normalizedPath.StartsWith(($normalizedRoot + '\'), [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-IsReparsePoint {
+    param(
+        [Parameter(Mandatory)]
+        [System.IO.FileSystemInfo]$Item
+    )
+
+    return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+}
+
+function Set-RestrictedDirectoryAcl {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    $directory = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if (-not $directory.PSIsContainer) {
+        throw ('Secure directory path must be a directory: {0}' -f $Path)
+    }
+
+    if (Test-IsReparsePoint -Item $directory) {
+        throw ('Secure directory path must not be a reparse point: {0}' -f $Path)
+    }
+
+    $currentUserSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $administratorsSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid, $null)
+    $systemSid = [Security.Principal.SecurityIdentifier]::new([Security.Principal.WellKnownSidType]::LocalSystemSid, $null)
+    $inheritanceFlags = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+    $propagationFlags = [System.Security.AccessControl.PropagationFlags]::None
+    $rights = [System.Security.AccessControl.FileSystemRights]::FullControl
+    $accessType = [System.Security.AccessControl.AccessControlType]::Allow
+    $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+    $acl.SetAccessRuleProtection($true, $false)
+
+    foreach ($sidGroup in @($currentUserSid, $administratorsSid, $systemSid) | Group-Object Value) {
+        $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $sidGroup.Group[0],
+            $rights,
+            $inheritanceFlags,
+            $propagationFlags,
+            $accessType
+        )
+        [void]$acl.AddAccessRule($rule)
+    }
+
+    Set-Acl -LiteralPath $directory.FullName -AclObject $acl
+}
+
+function Resolve-SecureDirectory {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path,
+
+        [Parameter(Mandatory)]
+        [string[]]$AllowedRoots
+    )
+
+    $normalizedPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-PathWithinAllowedRoot -Path $normalizedPath -AllowedRoots $AllowedRoots)) {
+        throw ('Directory path is outside the trusted root: {0}' -f $normalizedPath)
+    }
+
+    foreach ($allowedRoot in $AllowedRoots) {
+        if ([string]::IsNullOrWhiteSpace($allowedRoot) -or -not (Test-Path -LiteralPath $allowedRoot -PathType Container)) {
+            continue
+        }
+
+        $allowedRootItem = Get-Item -LiteralPath $allowedRoot -Force -ErrorAction Stop
+        if (Test-IsReparsePoint -Item $allowedRootItem) {
+            throw ('Trusted root must not be a reparse point: {0}' -f $allowedRootItem.FullName)
+        }
+    }
+
+    if (Test-Path -LiteralPath $normalizedPath -PathType Container) {
+        $directoryItem = Get-Item -LiteralPath $normalizedPath -Force -ErrorAction Stop
+        if (Test-IsReparsePoint -Item $directoryItem) {
+            throw ('Directory path must not be a reparse point: {0}' -f $normalizedPath)
+        }
+    }
+    elseif (-not $WhatIfPreference) {
+        New-Item -ItemType Directory -Path $normalizedPath -Force | Out-Null
+    }
+
+    if (-not $WhatIfPreference -and (Test-Path -LiteralPath $normalizedPath -PathType Container)) {
+        Set-RestrictedDirectoryAcl -Path $normalizedPath
+    }
+
+    return $normalizedPath
+}
+
+function Test-TrustedPublisher {
+    param(
+        [Parameter(Mandatory)]
+        [System.Management.Automation.Signature]$Signature,
+
+        [Parameter(Mandatory)]
+        [string[]]$PublisherPatterns
+    )
+
+    if ($Signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+        return $false
+    }
+
+    if ($null -eq $Signature.SignerCertificate) {
+        return $false
+    }
+
+    $publisherCandidates = @(
+        $Signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false),
+        $Signature.SignerCertificate.Subject,
+        $Signature.SignerCertificate.Issuer
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($publisherCandidate in $publisherCandidates) {
+        foreach ($publisherPattern in $PublisherPatterns) {
+            if ($publisherCandidate -like $publisherPattern) {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
 function Invoke-RefreshAdobeAcrobat {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -43,6 +202,12 @@ function Invoke-RefreshAdobeAcrobat {
 
         [Parameter(Mandatory)]
         [string]$LogDirectory,
+
+        [Parameter(Mandatory)]
+        [string[]]$TrustedPublisherPatterns,
+
+        [Parameter(Mandatory)]
+        [string]$MsiexecPath,
 
         [Parameter(Mandatory)]
         [string[]]$ProductNamePatterns,
@@ -57,14 +222,36 @@ function Invoke-RefreshAdobeAcrobat {
         [int[]]$SuccessExitCodes
     )
 
-    if (-not (Test-Path -LiteralPath $PackagePath)) {
+    if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
         throw 'Update $ScriptConfig.PackagePath before running the script.'
     }
 
-    if (-not (Test-Path -LiteralPath $LogDirectory)) {
-        New-Item -ItemType Directory -Path $LogDirectory -Force | Out-Null
+    if (-not (Test-Path -LiteralPath $MsiexecPath -PathType Leaf)) {
+        throw ('Windows Installer executable not found: {0}' -f $MsiexecPath)
     }
 
+    $packageItem = Get-Item -LiteralPath $PackagePath -Force -ErrorAction Stop
+    if (Test-IsReparsePoint -Item $packageItem) {
+        throw ('Package path must not be a reparse point: {0}' -f $packageItem.FullName)
+    }
+
+    $signature = Get-AuthenticodeSignature -FilePath $packageItem.FullName
+    if (-not (Test-TrustedPublisher -Signature $signature -PublisherPatterns $TrustedPublisherPatterns)) {
+        $publisherName = if ($null -ne $signature.SignerCertificate) {
+            $signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+        }
+        else {
+            ''
+        }
+
+        throw (
+            'Package signature validation failed. Status: {0}. Publisher: {1}' -f
+            $signature.Status,
+            $(if ([string]::IsNullOrWhiteSpace($publisherName)) { '<unknown>' } else { $publisherName })
+        )
+    }
+
+    $logDirectoryPath = Resolve-SecureDirectory -Path $LogDirectory -AllowedRoots @($ScriptConfig.StorageRoot)
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $matchingProducts = @()
     $restartRequired = $false
@@ -96,7 +283,7 @@ function Invoke-RefreshAdobeAcrobat {
         }
 
         if ([string]::IsNullOrWhiteSpace($rawCommand) -and $product.PSChildName -match '^\{[A-F0-9-]+\}$') {
-            $rawCommand = "msiexec.exe /x $($product.PSChildName)"
+            $rawCommand = "`"$MsiexecPath`" /x $($product.PSChildName)"
         }
 
         if ([string]::IsNullOrWhiteSpace($rawCommand)) {
@@ -110,9 +297,10 @@ function Invoke-RefreshAdobeAcrobat {
 
         $uninstallFilePath = $commandMatch.Groups['File'].Value.Trim('"')
         $uninstallArguments = $commandMatch.Groups['Args'].Value.Trim()
-        $uninstallLogPath = Join-Path -Path $LogDirectory -ChildPath ("Uninstall-{0}-{1}.log" -f $timestamp, ($product.PSChildName -replace '[^A-Za-z0-9-]', '_'))
+        $uninstallLogPath = Join-Path -Path $logDirectoryPath -ChildPath ("Uninstall-{0}-{1}.log" -f $timestamp, ($product.PSChildName -replace '[^A-Za-z0-9-]', '_'))
 
         if ($uninstallFilePath -match '(?i)msiexec(\.exe)?$') {
+            $uninstallFilePath = $MsiexecPath
             $uninstallArguments = $uninstallArguments -replace '(^|\s)/I(\s|$)', '$1/X$2'
             $uninstallArguments = $uninstallArguments -replace '(^|\s)/i(\s|$)', '$1/x$2'
 
@@ -149,10 +337,10 @@ function Invoke-RefreshAdobeAcrobat {
 
     $installFilePath = $PackagePath
     $installArguments = $PackageArguments
-    $installLogPath = Join-Path -Path $LogDirectory -ChildPath ("Install-{0}.log" -f $timestamp)
+    $installLogPath = Join-Path -Path $logDirectoryPath -ChildPath ("Install-{0}.log" -f $timestamp)
 
     if ([System.IO.Path]::GetExtension($PackagePath) -ieq '.msi') {
-        $installFilePath = 'msiexec.exe'
+        $installFilePath = $MsiexecPath
         $installArguments = "/i `"$PackagePath`" /qn /norestart /L*v `"$installLogPath`""
     }
     elseif ([string]::IsNullOrWhiteSpace($installArguments)) {
@@ -175,7 +363,7 @@ function Invoke-RefreshAdobeAcrobat {
         RemovedProducts     = $removedProducts -join '; '
         InstalledPackage    = $PackagePath
         RestartRequired     = $restartRequired
-        LogDirectory        = $LogDirectory
+        LogDirectory        = $logDirectoryPath
     }
 }
 
@@ -184,6 +372,8 @@ try {
         -PackagePath $ScriptConfig.PackagePath `
         -PackageArguments $ScriptConfig.PackageArguments `
         -LogDirectory $ScriptConfig.LogDirectory `
+        -TrustedPublisherPatterns $ScriptConfig.TrustedPublisherPatterns `
+        -MsiexecPath $ScriptConfig.MsiexecPath `
         -ProductNamePatterns $ScriptConfig.ProductNamePatterns `
         -RegistryPaths $ScriptConfig.RegistryPaths `
         -ProcessNames $ScriptConfig.ProcessNames `
