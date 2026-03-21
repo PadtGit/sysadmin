@@ -12,4 +12,13 @@ Describe 'V7 logged spool cleanup hardening' {
         $Content | Should Match 'Set-RestrictedDirectoryAcl'
         $Content | Should Not Match 'C:\\Temp\\print-queue\.log'
     }
+
+    It 'only restarts the service when this invocation stopped it' {
+        $ScriptPath = Join-Path $script:RepoRoot 'PowerShell Script\V7\Printer\restart.SpoolDeleteQV4.ps1'
+        $Content = Get-Content -LiteralPath $ScriptPath -Raw
+
+        $Content | Should Match '\$serviceWasStopped = \$false'
+        $Content | Should Match '\$serviceWasStopped = \$true'
+        $Content | Should Match 'if \(\$serviceWasStopped -and \$PSCmdlet\.ShouldProcess\(\$ServiceName, ''Start service''\)\)'
+    }
 }

@@ -199,6 +199,7 @@ function Invoke-LoggedPrintQueueCleanup {
     $Status = 'Completed'
     $Service = Get-Service -Name $ServiceName -ErrorAction Stop
     $ServiceWasRunning = $Service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running
+    $ServiceWasStopped = $false
 
     if (-not $WhatIfPreference -and $PSCmdlet.ShouldProcess($LogPath, 'Start transcript')) {
         Start-Transcript -Path $LogPath -NoClobber | Out-Null
@@ -209,6 +210,7 @@ function Invoke-LoggedPrintQueueCleanup {
         if ($ServiceWasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop service')) {
             Stop-Service -Name $ServiceName -Force -ErrorAction Stop
             (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds($TimeoutSeconds))
+            $ServiceWasStopped = $true
         }
 
         try {
@@ -222,7 +224,7 @@ function Invoke-LoggedPrintQueueCleanup {
             }
         }
         finally {
-            if ($ServiceWasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
+            if ($ServiceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
                 Start-Service -Name $ServiceName -ErrorAction Stop
                 (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds($TimeoutSeconds))
             }

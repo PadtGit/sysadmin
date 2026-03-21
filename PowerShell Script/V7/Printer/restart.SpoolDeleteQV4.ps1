@@ -191,10 +191,12 @@ function Invoke-ClearPrintQueueLogged {
     try {
         $service = Get-Service -Name $ServiceName -ErrorAction Stop
         $wasRunning = $service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running
+        $serviceWasStopped = $false
 
-        if ($wasRunning) {
+        if ($wasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop service')) {
             Stop-Service -Name $ServiceName -Force -ErrorAction Stop
-            $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds($TimeoutSeconds))
+            (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds($TimeoutSeconds))
+            $serviceWasStopped = $true
         }
 
         try {
@@ -219,7 +221,7 @@ function Invoke-ClearPrintQueueLogged {
             }
         }
         finally {
-            if ($wasRunning) {
+            if ($serviceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
                 Start-Service -Name $ServiceName -ErrorAction Stop
                 (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds($TimeoutSeconds))
             }
