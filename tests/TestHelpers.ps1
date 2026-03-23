@@ -1,8 +1,59 @@
 Set-StrictMode -Version 3.0
 
-$script:RepoRoot = Split-Path -Path $PSScriptRoot -Parent
+$global:SysadminMainRepoRoot = Split-Path -Path $PSScriptRoot -Parent
 
-function Invoke-WhatIfScriptObject {
+function Global:Import-ScriptModuleForTest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RelativeScriptPath,
+
+        [string]$ModuleName
+    )
+
+    $ScriptPath = Join-Path -Path $global:SysadminMainRepoRoot -ChildPath $RelativeScriptPath
+    if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) {
+        throw ('Script not found: {0}' -f $ScriptPath)
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ModuleName)) {
+        $BaseName = [System.IO.Path]::GetFileNameWithoutExtension($ScriptPath) -replace '[^A-Za-z0-9_]', '_'
+        $ModuleName = 'TestModule_{0}_{1}' -f $BaseName, ([guid]::NewGuid().ToString('N'))
+    }
+
+    $Tokens = $null
+    $ParseErrors = $null
+    $Ast = [System.Management.Automation.Language.Parser]::ParseFile($ScriptPath, [ref]$Tokens, [ref]$ParseErrors)
+    if ($ParseErrors.Count -gt 0) {
+        throw ('Failed to parse script for test import: {0}' -f $ScriptPath)
+    }
+
+    $ModuleSource = @(
+        foreach ($Statement in $Ast.EndBlock.Statements) {
+            if ($Statement -is [System.Management.Automation.Language.TryStatementAst]) {
+                continue
+            }
+
+            $Statement.Extent.Text
+        }
+    ) -join ([Environment]::NewLine + [Environment]::NewLine)
+    $ModuleSource = $ModuleSource -replace '\[System\.Runtime\.InteropServices\.Marshal\]::ReleaseComObject\(([^)]+)\) \| Out-Null', 'if ($1 -is [System.__ComObject]) { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($1) | Out-Null }'
+
+    $ExistingModule = Get-Module -Name $ModuleName
+    if ($null -ne $ExistingModule) {
+        Remove-Module -Name $ModuleName -Force
+    }
+
+    $Module = New-Module -Name $ModuleName -ScriptBlock ([scriptblock]::Create($ModuleSource)) | Import-Module -Force -PassThru
+
+    [pscustomobject]@{
+        ModuleName = $Module.Name
+        Module     = $Module
+        ScriptPath = $ScriptPath
+    }
+}
+
+function Global:Invoke-WhatIfScriptObject {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -13,7 +64,7 @@ function Invoke-WhatIfScriptObject {
         [string]$RelativeScriptPath
     )
 
-    $ScriptPath = Join-Path -Path $script:RepoRoot -ChildPath $RelativeScriptPath
+    $ScriptPath = Join-Path -Path $global:SysadminMainRepoRoot -ChildPath $RelativeScriptPath
     if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) {
         throw ('Script not found: {0}' -f $ScriptPath)
     }

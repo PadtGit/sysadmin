@@ -1,24 +1,121 @@
-Describe 'V5 logged spool cleanup hardening' {
-    . (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
+. (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
 
-    It 'writes transcripts under a secured ProgramData root with unique names' {
-        $ScriptPath = Join-Path $script:RepoRoot 'PowerShell Script\V5\Printer\restart.SpoolDeleteQV4.ps1'
-        $Content = Get-Content -LiteralPath $ScriptPath -Raw
+Describe 'V5 logged spool cleanup behavior' {
 
-        $Content | Should Match 'CommonApplicationData'
-        $Content | Should Match 'sysadmin-main\\Logs\\Printer'
-        $Content | Should Match 'New-UniqueChildPath'
-        $Content | Should Match 'NoClobber'
-        $Content | Should Match 'Set-RestrictedDirectoryAcl'
-        $Content | Should Not Match 'C:\\Temp\\print-queue\.log'
+    BeforeAll {
+        . (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
+        $script:ModuleInfo = Import-ScriptModuleForTest -RelativeScriptPath 'PowerShell Script\V5\Printer\restart.SpoolDeleteQV4.ps1'
     }
 
-    It 'only restarts the service when this invocation stopped it' {
-        $ScriptPath = Join-Path $script:RepoRoot 'PowerShell Script\V5\Printer\restart.SpoolDeleteQV4.ps1'
-        $Content = Get-Content -LiteralPath $ScriptPath -Raw
+    AfterAll {
+        if ($null -ne $script:ModuleInfo) {
+            Remove-Module -Name $script:ModuleInfo.ModuleName -Force -ErrorAction SilentlyContinue
+        }
+    }
 
-        $Content | Should Match '\$ServiceWasStopped = \$false'
-        $Content | Should Match '\$ServiceWasStopped = \$true'
-        $Content | Should Match 'if \(\$ServiceWasStopped -and \$PSCmdlet\.ShouldProcess\(\$ServiceName, ''Start service''\)\)'
+    It 'resolves a secure log path and suppresses transcript, service, and file mutations during WhatIf preview' {
+        $moduleName = $script:ModuleInfo.ModuleName
+
+        InModuleScope $moduleName {
+            param($serviceName, $spoolDirectory, $logDirectory, $storageRoot, $logPath)
+
+            $script:StorageRoot = $storageRoot
+
+            $service = [pscustomobject]@{
+                Status = [System.ServiceProcess.ServiceControllerStatus]::Running
+            }
+            $spoolFile = [System.IO.FileInfo]::new((Join-Path $spoolDirectory 'job1.spl'))
+
+            Mock Resolve-SecureDirectory { $Path }
+            Mock New-UniqueChildPath { $logPath }
+            Mock Get-Service { $service }
+            Mock Get-ChildItem { @($spoolFile) } -ParameterFilter { $LiteralPath -eq $spoolDirectory -and $File }
+            Mock Start-Transcript {}
+            Mock Stop-Transcript {}
+            Mock Stop-Service {}
+            Mock Start-Service {}
+            Mock Remove-Item {}
+
+            $result = Invoke-LoggedPrintQueueCleanup `
+                -RequireAdmin $true `
+                -IsAdministrator $false `
+                -ServiceName $serviceName `
+                -SpoolDirectory $spoolDirectory `
+                -TimeoutSeconds 30 `
+                -LogDirectory $logDirectory `
+                -LogFilePrefix 'print-queue' `
+                -AllowedExtensions @('.spl', '.shd') `
+                -WhatIf
+
+            $result.LogPath | Should -Be $logPath
+            $result.Status | Should -Be 'WhatIf'
+            $result.DeletedCount | Should -Be 0
+
+            Assert-MockCalled Resolve-SecureDirectory -Times 1 -Exactly -Scope It -ParameterFilter {
+                $Path -eq $logDirectory -and $AllowedRoots[0] -eq $storageRoot
+            }
+            Assert-MockCalled New-UniqueChildPath -Times 1 -Exactly -Scope It -ParameterFilter {
+                $Directory -eq $logDirectory -and $FileNamePrefix -eq 'print-queue' -and $Extension -eq '.log'
+            }
+            Assert-MockCalled Start-Transcript -Times 0 -Exactly -Scope It
+            Assert-MockCalled Stop-Service -Times 0 -Exactly -Scope It
+            Assert-MockCalled Remove-Item -Times 0 -Exactly -Scope It
+            Assert-MockCalled Start-Service -Times 0 -Exactly -Scope It
+        } -Parameters @{
+            serviceName    = 'Spooler'
+            spoolDirectory = 'C:\Windows\System32\spool\PRINTERS'
+            logDirectory   = 'C:\ProgramData\sysadmin-main\Logs\Printer'
+            storageRoot    = 'C:\ProgramData\sysadmin-main'
+            logPath        = 'C:\ProgramData\sysadmin-main\Logs\Printer\print-queue-20250102.log'
+        }
+    }
+
+    It 'does not restart the service when this invocation never stopped it' {
+        $moduleName = $script:ModuleInfo.ModuleName
+
+        InModuleScope $moduleName {
+            param($serviceName, $spoolDirectory, $logDirectory, $storageRoot, $logPath)
+
+            $script:StorageRoot = $storageRoot
+
+            $service = [pscustomobject]@{
+                Status = [System.ServiceProcess.ServiceControllerStatus]::Stopped
+            }
+
+            Mock Resolve-SecureDirectory { $Path }
+            Mock New-UniqueChildPath { $logPath }
+            Mock Get-Service { $service }
+            Mock Get-ChildItem { @() } -ParameterFilter { $LiteralPath -eq $spoolDirectory -and $File }
+            Mock Start-Transcript {}
+            Mock Stop-Transcript {}
+            Mock Stop-Service {}
+            Mock Start-Service {}
+            Mock Remove-Item {}
+
+            $result = Invoke-LoggedPrintQueueCleanup `
+                -RequireAdmin $false `
+                -IsAdministrator $false `
+                -ServiceName $serviceName `
+                -SpoolDirectory $spoolDirectory `
+                -TimeoutSeconds 30 `
+                -LogDirectory $logDirectory `
+                -LogFilePrefix 'print-queue' `
+                -AllowedExtensions @('.spl', '.shd')
+
+            $result.ServiceWasUp | Should -BeFalse
+            $result.DeletedCount | Should -Be 0
+            $result.Status | Should -Be 'Completed'
+
+            Assert-MockCalled Start-Transcript -Times 1 -Exactly -Scope It
+            Assert-MockCalled Stop-Transcript -Times 1 -Exactly -Scope It
+            Assert-MockCalled Stop-Service -Times 0 -Exactly -Scope It
+            Assert-MockCalled Start-Service -Times 0 -Exactly -Scope It
+        } -Parameters @{
+            serviceName    = 'Spooler'
+            spoolDirectory = 'C:\Windows\System32\spool\PRINTERS'
+            logDirectory   = 'C:\ProgramData\sysadmin-main\Logs\Printer'
+            storageRoot    = 'C:\ProgramData\sysadmin-main'
+            logPath        = 'C:\ProgramData\sysadmin-main\Logs\Printer\print-queue-20250102.log'
+        }
     }
 }

@@ -1,23 +1,100 @@
-Describe 'V5 Adobe Acrobat refresh hardening' {
-    . (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
+. (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
 
-    It 'returns a safe preview object with a secured log directory' {
-        $Result = Invoke-WhatIfScriptObject -Shell powershell -RelativeScriptPath 'PowerShell Script\V5\Adobe\Install.AdobeAcrobat.Clean.ps1'
+Describe 'V5 Adobe Acrobat refresh behavior' {
 
-        $Result.Object | Should Not BeNullOrEmpty
-        $Result.Object.Status | Should Be 'Skipped'
-        $Result.Object.Reason | Should Be 'PackagePathNotFound'
-        $Result.Object.LogDirectory | Should Match 'sysadmin-main\\Logs\\AdobeAcrobat'
-        $Result.Object.LogDirectory | Should Not Match 'C:\\Temp'
+    BeforeAll {
+        . (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
+        $script:ModuleInfo = Import-ScriptModuleForTest -RelativeScriptPath 'PowerShell Script\V5\Adobe\Install.AdobeAcrobat.Clean.ps1'
     }
 
-    It 'requires signature and publisher validation before running the installer' {
-        $ScriptPath = Join-Path $script:RepoRoot 'PowerShell Script\V5\Adobe\Install.AdobeAcrobat.Clean.ps1'
-        $Content = Get-Content -LiteralPath $ScriptPath -Raw
+    AfterAll {
+        if ($null -ne $script:ModuleInfo) {
+            Remove-Module -Name $script:ModuleInfo.ModuleName -Force -ErrorAction SilentlyContinue
+        }
+    }
 
-        $Content | Should Match 'Get-AuthenticodeSignature'
-        $Content | Should Match 'Test-TrustedPublisher'
-        $Content | Should Match 'TrustedPublisherPatterns'
-        $Content | Should Match 'System32\\msiexec\.exe'
+    It 'blocks installer execution when publisher validation fails' {
+        $moduleName = $script:ModuleInfo.ModuleName
+        $packagePath = Join-Path $env:TEMP ('codex-adobe-{0}.msi' -f [guid]::NewGuid().ToString('N'))
+
+        Set-Content -LiteralPath $packagePath -Value 'unsigned test package'
+
+        try {
+            InModuleScope $moduleName {
+                param($packagePath, $logDirectory, $msiexecPath)
+
+                Mock Resolve-SecureDirectory { $Path }
+                Mock Start-Process {}
+
+                {
+                    Invoke-AdobeAcrobatRefresh `
+                        -RequireAdmin $false `
+                        -IsAdministrator $false `
+                        -PackagePath $packagePath `
+                        -PackageArguments 'ignored' `
+                        -LogDirectory $logDirectory `
+                        -TrustedPublisherPatterns @('*') `
+                        -MsiexecPath $msiexecPath `
+                        -ProductNamePatterns @('Adobe Acrobat*') `
+                        -RegistryPaths @('HKLM:\Software\Test\*') `
+                        -ProcessNames @('Acrobat') `
+                        -SuccessExitCodes @(0, 1641, 3010)
+                } | Should -Throw '*Package signature validation failed*'
+
+                Assert-MockCalled Resolve-SecureDirectory -Times 0 -Exactly -Scope It
+                Assert-MockCalled Start-Process -Times 0 -Exactly -Scope It
+            } -Parameters @{
+                packagePath  = $packagePath
+                logDirectory = 'C:\ProgramData\sysadmin-main\Logs\AdobeAcrobat'
+                msiexecPath  = 'C:\Windows\System32\msiexec.exe'
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $packagePath -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'returns a WhatIf result and suppresses Start-Process during preview without elevation' {
+        $moduleName = $script:ModuleInfo.ModuleName
+
+        InModuleScope $moduleName {
+            param($packagePath, $logDirectory, $storageRoot, $msiexecPath)
+
+            $script:StorageRoot = $storageRoot
+
+            Mock Resolve-SecureDirectory { $Path }
+            Mock Get-ItemProperty { @() }
+            Mock Get-Process { @() }
+            Mock Start-Process {}
+
+            $result = Invoke-AdobeAcrobatRefresh `
+                -RequireAdmin $true `
+                -IsAdministrator $false `
+                -PackagePath $packagePath `
+                -PackageArguments '/quiet' `
+                -LogDirectory $logDirectory `
+                -TrustedPublisherPatterns @('*') `
+                -MsiexecPath $msiexecPath `
+                -ProductNamePatterns @('Adobe Acrobat*') `
+                -RegistryPaths @('HKLM:\Software\Test\*') `
+                -ProcessNames @('Acrobat') `
+                -SuccessExitCodes @(0, 1641, 3010) `
+                -WhatIf
+
+            $result.PackagePath | Should -Be $packagePath
+            $result.LogDirectory | Should -Be $logDirectory
+            $result.Status | Should -Be 'WhatIf'
+            $result.Reason | Should -Be ''
+
+            Assert-MockCalled Resolve-SecureDirectory -Times 1 -Exactly -Scope It -ParameterFilter {
+                $Path -eq $logDirectory -and $AllowedRoots[0] -eq $storageRoot
+            }
+            Assert-MockCalled Start-Process -Times 0 -Exactly -Scope It
+        } -Parameters @{
+            packagePath  = 'C:\Windows\System32\notepad.exe'
+            logDirectory = 'C:\ProgramData\sysadmin-main\Logs\AdobeAcrobat'
+            storageRoot  = 'C:\ProgramData\sysadmin-main'
+            msiexecPath  = 'C:\Windows\System32\msiexec.exe'
+        }
     }
 }
