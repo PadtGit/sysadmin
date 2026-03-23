@@ -32,26 +32,32 @@ jobs:
       - name: Install test and analyzer modules
         shell: pwsh
         run: |
-          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck
+          Install-Module Pester -Repository PSGallery -Scope CurrentUser -RequiredVersion 5.7.1 -Force -SkipPublisherCheck
+          Install-Module PSScriptAnalyzer -Repository PSGallery -Scope CurrentUser -RequiredVersion 1.25.0 -Force -SkipPublisherCheck
 
       - name: Run PSScriptAnalyzer
         shell: pwsh
         run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\Invoke-PSScriptAnalyzer.ps1
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\Invoke-PSScriptAnalyzer.ps1 `
+            -Path . `
+            -Recurse `
+            -SettingsPath .\tools\PSScriptAnalyzerSettings.psd1 `
+            -EnableExit `
+            -ExitCodeMode AllDiagnostics
 
       - name: Run Pester
         shell: pwsh
         run: |
           $resultPath = Join-Path $PWD 'artifacts\validation\pester-results.xml'
           New-Item -ItemType Directory -Force -Path (Split-Path -Path $resultPath -Parent) | Out-Null
-          Invoke-Pester -Path .\tests -Output Detailed -CI -Configuration @{
-            TestResult = @{
-              Enabled = $true
-              OutputPath = $resultPath
-              OutputFormat = 'NUnitXml'
-            }
-          }
+          $config = New-PesterConfiguration
+          $config.Run.Path = '.\tests'
+          $config.Output.Verbosity = 'Detailed'
+          $config.Run.Exit = $true
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = $resultPath
+          $config.TestResult.OutputFormat = 'NUnitXml'
+          Invoke-Pester -Configuration $config
 
       - name: Run trusted WhatIf smoke checks
         shell: pwsh

@@ -22,7 +22,7 @@
 - Fixed-list canonical V5 helper:
   - `PowerShell Script\Invoke-V5-WhatIfValidation.ps1`
 - Analyzer:
-  - `tools\Invoke-PSScriptAnalyzer.ps1`
+  - `pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PWD 'tools\Invoke-PSScriptAnalyzer.ps1') -Path . -Recurse -SettingsPath (Join-Path $PWD 'tools\PSScriptAnalyzerSettings.psd1') -EnableExit -ExitCodeMode AllDiagnostics`
 - Tests:
   - `tests/`
 - CI:
@@ -39,8 +39,8 @@
 
 ### PSScriptAnalyzer
 
-- Start with warning-only reporting.
-- Tighten to blocking error findings after the repo stabilizes on the single canonical tree.
+- Use the repo-wide recursive analyzer command with the canonical settings file as the baseline local and agent validation path.
+- Keep workflow expectations aligned with `-EnableExit -ExitCodeMode AllDiagnostics` so CI and local runs fail on any reported diagnostic.
 
 ### Pester
 

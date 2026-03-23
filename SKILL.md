@@ -15,7 +15,7 @@ Use the canonical script tree under `PowerShell Script/`.
 - Nested V5 validator: `PowerShell Script\Invoke-V5-WhatIfValidation.ps1`
 - Root wrapper: `Invoke-V5-WhatIfValidation.ps1`
 - Pester tests: `tests/`
-- Analyzer runner: `tools\Invoke-PSScriptAnalyzer.ps1`
+- Analyzer runner: `pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PWD 'tools\Invoke-PSScriptAnalyzer.ps1') -Path . -Recurse -SettingsPath (Join-Path $PWD 'tools\PSScriptAnalyzerSettings.psd1') -EnableExit -ExitCodeMode AllDiagnostics`
 
 ## Detailed Workflow
 

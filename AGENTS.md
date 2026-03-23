@@ -20,6 +20,7 @@
 - `SKILL.md`: repo-root entrypoint that points agents to the deeper workflow skill.
 - `tests/*`: Pester smoke and contract tests.
 - `tools/Invoke-PSScriptAnalyzer.ps1`: analyzer runner.
+- `tools/PSScriptAnalyzerSettings.psd1`: canonical analyzer settings for repo-wide validation.
 - `.github/workflows/powershell-validation.yml`: CI entrypoint for analyzer, Pester, trusted `-WhatIf` smoke checks, and validation artifact upload.
 - `sandbox/sysadmin-main-validation.wsb`: disposable Windows Sandbox profile with the repo mapped read-only and networking disabled.
 - `docs/windows-sandbox-validation.md`: manual validation flow for risky scripts in Windows Sandbox.
@@ -69,7 +70,12 @@
 - Analyzer helper:
 
 ```powershell
-& (Get-Command pwsh.exe).Source -NoProfile -ExecutionPolicy Bypass -File '.\tools\Invoke-PSScriptAnalyzer.ps1'
+pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PWD 'tools\Invoke-PSScriptAnalyzer.ps1') `
+  -Path . `
+  -Recurse `
+  -SettingsPath (Join-Path $PWD 'tools\PSScriptAnalyzerSettings.psd1') `
+  -EnableExit `
+  -ExitCodeMode AllDiagnostics
 ```
 
 - Basic Pester helper:
@@ -83,13 +89,14 @@ Invoke-Pester -Path .\tests
 ```powershell
 $resultPath = Join-Path $PWD 'artifacts\validation\pester-results.xml'
 New-Item -ItemType Directory -Force -Path (Split-Path -Path $resultPath -Parent) | Out-Null
-Invoke-Pester -Path .\tests -Output Detailed -CI -Configuration @{
-  TestResult = @{
-    Enabled = $true
-    OutputPath = $resultPath
-    OutputFormat = 'NUnitXml'
-  }
-}
+$config = New-PesterConfiguration
+$config.Run.Path = '.\tests'
+$config.Output.Verbosity = 'Detailed'
+$config.Run.Exit = $true
+$config.TestResult.Enabled = $true
+$config.TestResult.OutputPath = $resultPath
+$config.TestResult.OutputFormat = 'NUnitXml'
+Invoke-Pester -Configuration $config
 ```
 
 - Trusted local smoke checks aligned with CI:
@@ -119,7 +126,7 @@ Start-Process '.\sandbox\sysadmin-main-validation.wsb'
    - If work changes behavior or test depth, prefer behavioral Pester coverage over brittle string-output assertions.
    - Keep V7/V5 drift intentional and explicit; do not "normalize" differences that exist for compatibility unless the task calls for it.
 3. Tooling validation
-   - Run `tools\Invoke-PSScriptAnalyzer.ps1` when editing script logic, helpers, or validation tooling.
+   - Run the standard repo-wide analyzer command with `tools\Invoke-PSScriptAnalyzer.ps1`, `-Path .`, `-Recurse`, `tools\PSScriptAnalyzerSettings.psd1`, and `-ExitCodeMode AllDiagnostics` when editing script logic, helpers, or validation tooling.
    - Run focused or full `Invoke-Pester` coverage when behavior, result objects, or helper surfaces change.
    - Keep local validation commands aligned with `.github/workflows/powershell-validation.yml`.
 4. High-risk manual validation
@@ -150,8 +157,11 @@ Start-Process '.\sandbox\sysadmin-main-validation.wsb'
 - In service-control scripts, restart should depend on whether this invocation actually stopped the service, not only on the initial service state.
 - Generated validation logs belong in `artifacts/validation/`; do not reintroduce tracked root-level result files.
 - The root validator is now only a wrapper. The nested validator is the source of truth.
-- `tools\Invoke-PSScriptAnalyzer.ps1` writes to `artifacts/validation/psscriptanalyzer.txt` by default and only exits non-zero for error-severity findings.
+- The standard analyzer baseline is the repo-wide recursive command using `tools\Invoke-PSScriptAnalyzer.ps1` with `tools\PSScriptAnalyzerSettings.psd1`, `-EnableExit`, and `-ExitCodeMode AllDiagnostics`.
+- Pin PSScriptAnalyzer to version `1.25.0` for both local validation and CI; do not float to newer versions without an intentional repo update.
+- `tools\Invoke-PSScriptAnalyzer.ps1` writes to `artifacts/validation/psscriptanalyzer.txt` by default.
 - CI currently exports Pester results to `artifacts/validation/pester-results.xml` and uploads `artifacts/validation/` as the validation artifact.
+- Pester 5 does not support combining `-CI` with `-Configuration`; use `New-PesterConfiguration` for CI-style NUnit XML output.
 - `sandbox\sysadmin-main-validation.wsb` maps the repo into `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main` as read-only with networking and vGPU disabled.
 - Some V7 and V5 script pairs still have intentional differences in admin preview behavior or result fields; preserve them unless you are intentionally standardizing both sides.
 
@@ -163,4 +173,5 @@ Start-Process '.\sandbox\sysadmin-main-validation.wsb'
 - 2026-03-20: Added initial analyzer, Pester, Windows Sandbox, and CI entrypoints for future hardening work.
 - 2026-03-22: Added repo-specific security-hardening and behavioral Pester skills and documented the multi-agent operating flow under `docs/`.
 - 2026-03-22: Expanded the Windows validation workflow to include analyzer output, NUnit-style Pester results, trusted `-WhatIf` smoke checks, and Windows Sandbox guidance.
+- 2026-03-23: Standardized analyzer validation on the repo-wide recursive command with explicit settings and `AllDiagnostics` exit handling.
 - Keep this section focused on durable repo guidance, not task-by-task narrative.

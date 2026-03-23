@@ -36,7 +36,7 @@ Maintain this repo with a staged workflow that starts from the canonical nested 
 - Adapt `PowerShell Script/V5` second only where compatibility or parity requires it.
 - Preserve `#Requires`, `[CmdletBinding(SupportsShouldProcess = $true)]`, `Set-StrictMode -Version 3.0`, `$ErrorActionPreference = 'Stop'`, admin gating, and current result-object shape unless the task explicitly changes them.
 - Keep `-WhatIf` usable whenever the existing script already supports that pattern.
-- Validate the changed scripts directly with the commands from `AGENTS.md`. Use helper scripts only when their target tree matches the files you changed.
+- Validate the changed scripts directly with the commands from `AGENTS.md`. Use the standard analyzer command with `tools\Invoke-PSScriptAnalyzer.ps1`, `-ExecutionPolicy Bypass`, `-Path .`, `-Recurse`, `tools\PSScriptAnalyzerSettings.psd1`, and `-ExitCodeMode AllDiagnostics` when analyzer coverage is part of the task. Use helper scripts only when their target tree matches the files you changed.
 
 ### Round 2: Security and Behavioral Tests
 
