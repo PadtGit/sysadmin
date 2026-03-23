@@ -53,11 +53,11 @@
 
 .PARAMETER OutJsonPath
     Path for the JSON findings report.
-    Defaults to artifacts/psscriptanalyzer/results.json under the script root.
+    Defaults to artifacts/validation/psscriptanalyzer.json under the repo root.
 
 .PARAMETER OutSarifPath
     Path for the SARIF 2.1.0 report.
-    Defaults to artifacts/psscriptanalyzer/results.sarif under the script root.
+    Defaults to artifacts/validation/psscriptanalyzer.sarif under the repo root.
 
 .PARAMETER EnableExit
     When set, the script exits with a non-zero code based on ExitCodeMode.
@@ -203,15 +203,15 @@ if ([string]::IsNullOrWhiteSpace($OutTxtPath)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($OutJsonPath)) {
-    $OutJsonPath = Join-Path -Path $ScriptRoot -ChildPath 'artifacts' |
-        Join-Path -ChildPath 'psscriptanalyzer' |
-        Join-Path -ChildPath 'results.json'
+    $OutJsonPath = Join-Path -Path $RepoRoot -ChildPath 'artifacts' |
+        Join-Path -ChildPath 'validation' |
+        Join-Path -ChildPath 'psscriptanalyzer.json'
 }
 
 if ([string]::IsNullOrWhiteSpace($OutSarifPath)) {
-    $OutSarifPath = Join-Path -Path $ScriptRoot -ChildPath 'artifacts' |
-        Join-Path -ChildPath 'psscriptanalyzer' |
-        Join-Path -ChildPath 'results.sarif'
+    $OutSarifPath = Join-Path -Path $RepoRoot -ChildPath 'artifacts' |
+        Join-Path -ChildPath 'validation' |
+        Join-Path -ChildPath 'psscriptanalyzer.sarif'
 }
 
 foreach ($OutPath in @($OutTxtPath, $OutJsonPath, $OutSarifPath)) {
@@ -335,6 +335,56 @@ function Normalize-AnalyzerSettings {
     }
 
     return $SettingsObject
+}
+
+function Get-CompatibilityRulesMissingTargetProfiles {
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$SettingsObject
+    )
+
+    $CompatibilityRules = @(
+        'PSUseCompatibleCmdlets',
+        'PSUseCompatibleCommands',
+        'PSUseCompatibleSyntax',
+        'PSUseCompatibleTypes'
+    )
+    $MissingRules = [System.Collections.Generic.List[string]]::new()
+
+    if (-not $SettingsObject.ContainsKey('Rules') -or $SettingsObject.Rules -isnot [hashtable]) {
+        return $MissingRules
+    }
+
+    foreach ($RuleName in $CompatibilityRules) {
+        if (-not $SettingsObject.Rules.ContainsKey($RuleName)) {
+            continue
+        }
+
+        $RuleSettings = $SettingsObject.Rules[$RuleName]
+        if ($RuleSettings -isnot [hashtable]) {
+            continue
+        }
+
+        $IsEnabled = $true
+        if ($RuleSettings.ContainsKey('Enable')) {
+            $IsEnabled = [bool]$RuleSettings.Enable
+        }
+
+        $TargetProfiles = @()
+        if ($RuleSettings.ContainsKey('TargetProfiles')) {
+            $TargetProfiles = @(
+                $RuleSettings.TargetProfiles |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+                    ForEach-Object { [string]$_ }
+            )
+        }
+
+        if ($IsEnabled -and $TargetProfiles.Count -eq 0) {
+            $MissingRules.Add($RuleName)
+        }
+    }
+
+    return $MissingRules
 }
 
 # ---------------------------------------------------------------------------
@@ -566,6 +616,14 @@ if ($Settings) {
     if ($CustomRulePath)        { $Settings.CustomRulePath        = $CustomRulePath }
     if ($RecurseCustomRulePath) { $Settings.RecurseCustomRulePath = $true }
     if ($IncludeDefaultRules)   { $Settings.IncludeDefaultRules   = $true }
+
+    $CompatibilityRulesMissingTargetProfiles = Get-CompatibilityRulesMissingTargetProfiles -SettingsObject $Settings
+    if ($CompatibilityRulesMissingTargetProfiles.Count -gt 0) {
+        throw (
+            "Compatibility rules enabled without TargetProfiles in '{0}': {1}. " +
+            'Add TargetProfiles for those rules or disable them before running analyzer validation.'
+        ) -f $SettingsPath, ($CompatibilityRulesMissingTargetProfiles -join ', ')
+    }
 }
 
 # ---------------------------------------------------------------------------
