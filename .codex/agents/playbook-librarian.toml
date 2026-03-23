@@ -1,16 +1,14 @@
 name = "playbook-librarian"
-description = "Documentation-focused agent that updates the living AGENTS.md playbook after stable repo discoveries."
-model = "gpt-5.3-codex"
+description = "Documentation-focused agent that syncs AGENTS.md and docs/* after stable workflow or repo discoveries."
+model = "gpt-5.4-mini"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 nickname_candidates = ["Ledger", "Notary", "Index"]
 developer_instructions = """
 Read AGENTS.md before editing it.
-Only update the librarian-managed sections:
-- Known Pitfalls and Discoveries
-- Improvement Notes
-Do not rewrite the rest of the document unless the parent agent explicitly asks for a structural playbook change.
+Only edit AGENTS.md and docs/* unless the parent agent explicitly grants a broader write scope.
+Keep the role roster, workflow rounds, validation commands, sandbox behavior, and durable repo discoveries in sync.
 Keep additions short, durable, and repo-specific.
 Deduplicate discoveries instead of rephrasing the same point.
-Prefer one-line bullets that a future maintainer can quickly scan.
+Prefer scan-friendly wording that future maintainers can update without reinterpretation.
 """

@@ -7,19 +7,25 @@ on:
       - 'PowerShell Script/**'
       - 'tests/**'
       - 'tools/**'
+      - '.agents/skills/**'
+      - '.codex/agents/**'
       - '.github/workflows/powershell-validation.yml'
       - 'AGENTS.md'
       - 'SKILL.md'
       - 'docs/**'
+      - 'sandbox/**'
   pull_request:
     paths:
       - 'PowerShell Script/**'
       - 'tests/**'
       - 'tools/**'
+      - '.agents/skills/**'
+      - '.codex/agents/**'
       - '.github/workflows/powershell-validation.yml'
       - 'AGENTS.md'
       - 'SKILL.md'
       - 'docs/**'
+      - 'sandbox/**'
 
 jobs:
   validate:

@@ -1,32 +1,35 @@
 # sysadmin-main Multi-Agent SOP
 
-## Current State
+## Why This Shape
+
+- Use a manager pattern: `sysadmin-orchestrator` stays the single user-facing controller and delegates bounded work to specialist agents.
+- Use `gpt-5.4` for orchestration and final review, `gpt-5.4-mini` for bounded read-heavy discovery and doc-sync roles, and `gpt-5.3-codex` for coding-heavy implementation and validation specialists.
+- Keep this SOP, `AGENTS.md`, `.codex/agents/*.toml`, and `.github/workflows/powershell-validation.yml` aligned whenever the workflow changes.
+
+## Repo Ground Rules
 
 - Canonical scripts live only under `PowerShell Script/V5` and `PowerShell Script/V7`.
 - The repo-root `Invoke-V5-WhatIfValidation.ps1` is a wrapper for `PowerShell Script/Invoke-V5-WhatIfValidation.ps1`.
 - Generated validation output belongs under `artifacts/validation/`.
-- `SKILL.md` at the repo root is the human/agent entrypoint; the deeper repo-specific workflow remains under `.agents/skills/maintain-windows-admin-powershell/SKILL.md`.
-
-## Working Rules
-
+- `SKILL.md` at the repo root is the human and agent entrypoint; the deeper repo-specific workflow remains under `.agents/skills/maintain-windows-admin-powershell/SKILL.md`.
+- This repo is PowerShell-only. Keep AutoHotkey automation in a separate repository.
 - Update `PowerShell Script/V7` first, then adapt `PowerShell Script/V5` only where compatibility or parity requires it.
 - Preserve `Set-StrictMode -Version 3.0`, `$ErrorActionPreference = 'Stop'`, and `SupportsShouldProcess`.
 - Prefer safe `-WhatIf` preview behavior over hard admin-only preview blocks where the script can truthfully support preview without elevation.
 - Keep result objects compact and structured. Avoid noisy transcript-style output by default.
 
-## Validation Surfaces
+## Agent Matrix
 
-- Direct targeted validation:
-  - `pwsh -NoProfile -ExecutionPolicy Bypass -File 'PowerShell Script\V7\<category>\<script>.ps1' -WhatIf`
-  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'PowerShell Script\V5\<category>\<script>.ps1' -WhatIf`
-- Fixed-list canonical V5 helper:
-  - `PowerShell Script\Invoke-V5-WhatIfValidation.ps1`
-- Analyzer:
-  - `pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PWD 'tools\Invoke-PSScriptAnalyzer.ps1') -Path . -Recurse -SettingsPath (Join-Path $PWD 'tools\PSScriptAnalyzerSettings.psd1') -EnableExit -ExitCodeMode AllDiagnostics`
-- Tests:
-  - `tests/`
-- CI:
-  - `.github/workflows/powershell-validation.yml`
+| Agent | Model | Reasoning | Sandbox | Write Scope | Primary Responsibility |
+| --- | --- | --- | --- | --- | --- |
+| `sysadmin-orchestrator` | `gpt-5.4` | `high` | `workspace-write` | Any surface when acting directly, but prefers delegation | Single controller for sequencing, synthesis, escalation, and final workflow dispatch |
+| `repo-explorer` | `gpt-5.4-mini` | `medium` | `read-only` | None | Repo mapping, workflow-surface discovery, and evidence gathering |
+| `script-implementer` | `gpt-5.3-codex` | `high` | `workspace-write` | Broad implementation surface | Smallest defensible script, workflow, or documentation patch |
+| `validation-runner` | `gpt-5.3-codex` | `medium` | `workspace-write` | Artifacts only; no tracked edits | Local analyzer, Pester, smoke checks, sandbox sanity, and GitHub workflow execution |
+| `security-boundary-hardener` | `gpt-5.3-codex` | `high` | `workspace-write` | `PowerShell Script/*` trust-boundary slices only | Publisher, signature, path-trust, ACL, output-root, and reparse-point hardening |
+| `behavioral-pester-specialist` | `gpt-5.3-codex` | `high` | `workspace-write` | `tests/*` only | Behavior-focused Pester coverage and WhatIf safety tests |
+| `code-critic` | `gpt-5.4` | `high` | `read-only` | None | Final `PASS` or `REVISE` review over code, docs, and validation evidence |
+| `playbook-librarian` | `gpt-5.4-mini` | `medium` | `workspace-write` | `AGENTS.md` and `docs/*` | Workflow-doc synchronization and durable repo guidance upkeep |
 
 ## Current High-Risk Areas
 
@@ -35,25 +38,41 @@
 - Broad Windows cleanup scripts
 - Installer orphan move scripts
 
-## Roadmap
+## Round Order
 
-### PSScriptAnalyzer
+1. Explore
+   - `repo-explorer` maps the exact file pair or workflow surface, current drift, and required validation commands.
+2. Implement
+   - `script-implementer` makes the smallest patch; when script logic changes, update `PowerShell Script/V7` first and adapt `PowerShell Script/V5` only where compatibility requires it.
+3. Optional security specialist
+   - Use `security-boundary-hardener` when the task touches publisher checks, signatures, output roots, ACLs, canonical path enforcement, or reparse-point handling.
+4. Optional behavioral Pester specialist
+   - Use `behavioral-pester-specialist` when tests, WhatIf behavior, or result contracts change.
+5. Validate locally
+   - `validation-runner` executes the analyzer command from `AGENTS.md`, the CI-style Pester configuration, the four trusted local smoke checks, and a sandbox sanity check against the current `.wsb` file and docs.
+6. Critic review
+   - `code-critic` returns `PASS` or `REVISE` with only concrete risk-based findings.
+7. Playbook sync
+   - `playbook-librarian` updates `AGENTS.md` and `docs/*` when workflow wording or durable repo knowledge drifted during the task.
+8. Dispatch GitHub workflow
+   - Run the repo workflow only after local validation and critic review pass:
 
-- Use the repo-wide recursive analyzer command with the canonical settings file as the baseline local and agent validation path.
-- Keep workflow expectations aligned with `-EnableExit -ExitCodeMode AllDiagnostics` so CI and local runs fail on any reported diagnostic.
+```powershell
+gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin
+$runId = gh run list --workflow "PowerShell Validation" --repo PadtGit/sysadmin --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run watch $runId --repo PadtGit/sysadmin --exit-status
+```
 
-### Pester
+## Validation Surface
 
-- Keep smoke tests focused on preview-safe scripts.
-- Use contract tests for result shapes and path conventions.
-- Add deeper mocked tests for installer, service, printer, and reboot flows as the harness matures.
-
-### Windows Sandbox
-
-- Use `sandbox/sysadmin-main-validation.wsb` as the disposable validation shell for risky scripts.
-- Keep the repo mapped read-only and networking disabled unless a task explicitly requires network access.
-
-### CI
-
-- Use the Windows workflow to run Pester, analyzer checks, and a small set of trusted `-WhatIf` smoke commands.
+- Use the repo-wide recursive analyzer command with `tools\Invoke-PSScriptAnalyzer.ps1`, `tools\PSScriptAnalyzerSettings.psd1`, `-EnableExit`, and `-ExitCodeMode AllDiagnostics`.
+- Use the CI-style Pester configuration that writes results to `artifacts/validation/pester-results.xml`.
+- Keep smoke checks focused on the trusted `-WhatIf` commands documented in `AGENTS.md`.
+- Use `sandbox/sysadmin-main-validation.wsb` as the disposable validation shell for risky scripts. The profile maps the repo read-only, disables networking and vGPU, and opens PowerShell at `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main`.
 - Publish validation and test artifacts from `artifacts/validation/`.
+
+## Reference Inputs
+
+- OpenAI manager-pattern guidance: [A practical guide to building agents](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf)
+- Current model guidance for Codex-compatible orchestration defaults: [Latest model guide](https://developers.openai.com/api/docs/guides/latest-model)
+- Coding-specialist guidance for Codex-heavy roles: [Introducing GPT-5.3-Codex](https://openai.com/index/introducing-gpt-5-3-codex/)

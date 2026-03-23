@@ -2,7 +2,7 @@
 
 ## Project Snapshot
 
-- This repo contains Windows sysadmin PowerShell scripts with mirrored PowerShell 7 and Windows PowerShell 5.1 variants.
+- This repo contains Windows sysadmin PowerShell scripts only. Keep AutoHotkey automation in a separate repository.
 - Treat `PowerShell Script/*` as the canonical working tree.
 - The only supported script trees are `PowerShell Script/V7/*` and `PowerShell Script/V5/*`.
 - Git metadata and `git.exe` are available in this workspace.
@@ -18,11 +18,13 @@
 - `PowerShell Script/Invoke-V5-WhatIfValidation.ps1`: fixed-list validator for the canonical V5 tree.
 - `Invoke-V5-WhatIfValidation.ps1`: thin wrapper for the nested validator.
 - `SKILL.md`: repo-root entrypoint that points agents to the deeper workflow skill.
+- `.agents/skills/*`: repo-local maintenance, security-hardening, and behavioral Pester skills.
+- `.codex/agents/*.toml`: repo-local manager and specialist agent configs for workflow execution.
 - `tests/*`: Pester smoke and contract tests.
 - `tools/Invoke-PSScriptAnalyzer.ps1`: analyzer runner.
 - `tools/PSScriptAnalyzerSettings.psd1`: canonical analyzer settings for repo-wide validation.
 - `.github/workflows/powershell-validation.yml`: CI entrypoint for analyzer, Pester, trusted `-WhatIf` smoke checks, and validation artifact upload.
-- `sandbox/sysadmin-main-validation.wsb`: disposable Windows Sandbox profile with the repo mapped read-only and networking disabled.
+- `sandbox/sysadmin-main-validation.wsb`: disposable Windows Sandbox profile that maps the repo read-only into `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main`, disables networking and vGPU, and opens PowerShell at that path.
 - `docs/windows-sandbox-validation.md`: manual validation flow for risky scripts in Windows Sandbox.
 - `docs/sysadmin-main-multi-agent-sop.md`: current operating notes for agent roles, validation surfaces, and repo workflow expectations.
 
@@ -114,42 +116,56 @@ Invoke-Pester -Configuration $config
 Start-Process '.\sandbox\sysadmin-main-validation.wsb'
 ```
 
+- GitHub workflow dispatch:
+
+```powershell
+gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin
+$runId = gh run list --workflow "PowerShell Validation" --repo PadtGit/sysadmin --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run watch $runId --repo PadtGit/sysadmin --exit-status
+```
+
 ## Workflow Rounds
 
-1. Maintenance
+1. Explore
    - Read this playbook first.
-   - Map the exact script pair or helper surface before editing.
+   - Let `repo-explorer` map the exact script pair or workflow surface, validation commands, sandbox expectations, and current drift before editing.
+2. Implement
+   - Let `script-implementer` make the smallest defensible patch.
    - Edit nested `V7` first, then adapt nested `V5` only where compatibility or parity requires it.
-   - Validate the changed scripts directly with `-WhatIf`.
-2. Security and behavioral coverage
-   - If work touches trust boundaries, path trust, reparse-point handling, publisher checks, output roots, or ACLs, apply the secure-by-default hardening patterns already used in this repo.
-   - If work changes behavior or test depth, prefer behavioral Pester coverage over brittle string-output assertions.
+3. Optional security specialist
+   - Use `security-boundary-hardener` when work touches trust boundaries, path trust, reparse-point handling, publisher checks, output roots, or ACLs.
    - Keep V7/V5 drift intentional and explicit; do not "normalize" differences that exist for compatibility unless the task calls for it.
-3. Tooling validation
-   - Run the standard repo-wide analyzer command with `tools\Invoke-PSScriptAnalyzer.ps1`, `-Path .`, `-Recurse`, `tools\PSScriptAnalyzerSettings.psd1`, and `-ExitCodeMode AllDiagnostics` when editing script logic, helpers, or validation tooling.
-   - Run focused or full `Invoke-Pester` coverage when behavior, result objects, or helper surfaces change.
+4. Optional behavioral Pester specialist
+   - Use `behavioral-pester-specialist` when work changes behavior, result objects, WhatIf safety, or test depth.
+   - Prefer behavioral Pester coverage over brittle string-output assertions.
+5. Validation runner
+   - Let `validation-runner` run the standard repo-wide analyzer command, the CI-style Pester configuration, the trusted smoke checks, and the sandbox sanity check without editing tracked files.
    - Keep local validation commands aligned with `.github/workflows/powershell-validation.yml`.
-4. High-risk manual validation
-   - Use `sandbox\sysadmin-main-validation.wsb` for risky manual validation of network reset/reboot, installer orphan move, broad cleanup, and similar scripts.
-   - Run `-WhatIf` first inside the Sandbox and inspect any output under `artifacts/validation/`.
-   - Only perform non-`WhatIf` execution when you are intentionally testing inside the disposable Sandbox environment.
-5. Code-quality review
-   - Have a critic review correctness, safety, regressions, and V7/V5 drift.
+6. Code-quality review
+   - Have `code-critic` review correctness, safety, regressions, validation gaps, workflow drift, and V7/V5 drift.
    - Require `PASS` or `REVISE`.
-6. Change analysis
+7. Playbook sync
+   - Have `playbook-librarian` sync `AGENTS.md` and `docs/*` when workflow wording or durable repo knowledge changed.
+8. GitHub workflow dispatch
+   - After local validation and review pass, dispatch `PowerShell Validation` with `gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin` and watch the latest run to completion.
+9. Change analysis
    - Use Git metadata for recent-commit or last-N-days analysis.
    - Do not substitute file timestamps for commit windows.
 
-## Subagent Roles
+## Agent Roles
 
-- `sysadmin-orchestrator`: coordinates exploration, implementation, critique, and final reporting.
-- `repo-explorer`: gathers canonical paths, validation commands, and script patterns without editing files.
-- `script-implementer`: makes the smallest defensible code change, V7 first and V5 second.
-- `code-critic`: returns `PASS` or `REVISE` with concrete risk-based findings.
-- `playbook-librarian`: updates only the librarian-managed sections below.
+- `sysadmin-orchestrator` (`gpt-5.4`, `high`, `workspace-write`): manager-pattern controller that sequences exploration, implementation, specialist delegation, local validation, review, documentation sync, and final workflow dispatch.
+- `repo-explorer` (`gpt-5.4-mini`, `medium`, `read-only`): gathers canonical paths, workflow surfaces, validation commands, sandbox expectations, and current drift without editing files.
+- `script-implementer` (`gpt-5.3-codex`, `high`, `workspace-write`): makes the smallest defensible script, workflow, or documentation change when a narrower specialist does not own that surface.
+- `validation-runner` (`gpt-5.3-codex`, `medium`, `workspace-write`): runs analyzer, Pester, smoke checks, sandbox sanity, GitHub workflow dispatch, and result collection without editing tracked files.
+- `security-boundary-hardener` (`gpt-5.3-codex`, `high`, `workspace-write`): owns trust-boundary and secure-by-default edits in `PowerShell Script/*`.
+- `behavioral-pester-specialist` (`gpt-5.3-codex`, `high`, `workspace-write`): owns `tests/*` and WhatIf or behavior-focused Pester coverage.
+- `code-critic` (`gpt-5.4`, `high`, `read-only`): returns `PASS` or `REVISE` with concrete risk-based findings across code, docs, and validation evidence.
+- `playbook-librarian` (`gpt-5.4-mini`, `medium`, `workspace-write`): syncs `AGENTS.md` and `docs/*` when workflow wording or durable repo knowledge changes.
 
 ## Known Pitfalls and Discoveries
 
+- This repo is PowerShell-only; keep AutoHotkey automation in a separate repository instead of reintroducing an AutoHotkey subtree under this tree.
 - The canonical V7 Windows maintenance filenames now use ASCII names to match V5 and operator expectations:
   - `Nettoyage.Avance.Windows.Sauf.logserreur.ps1`
   - `Nettoyage.Complet.Caches.Windows.ps1`
@@ -163,6 +179,8 @@ Start-Process '.\sandbox\sysadmin-main-validation.wsb'
 - CI currently exports Pester results to `artifacts/validation/pester-results.xml` and uploads `artifacts/validation/` as the validation artifact.
 - Pester 5 does not support combining `-CI` with `-Configuration`; use `New-PesterConfiguration` for CI-style NUnit XML output.
 - `sandbox\sysadmin-main-validation.wsb` maps the repo into `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main` as read-only with networking and vGPU disabled.
+- Workflow-surface changes under `.codex/agents/`, `.agents/skills/`, and `sandbox/` should trigger the PowerShell Validation workflow so docs, agents, and validation stay aligned.
+- The preferred validation finish is local analyzer, Pester, smoke, and sandbox checks first, then `gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin` for remote confirmation.
 - Some V7 and V5 script pairs still have intentional differences in admin preview behavior or result fields; preserve them unless you are intentionally standardizing both sides.
 
 ## Improvement Notes
@@ -174,4 +192,7 @@ Start-Process '.\sandbox\sysadmin-main-validation.wsb'
 - 2026-03-22: Added repo-specific security-hardening and behavioral Pester skills and documented the multi-agent operating flow under `docs/`.
 - 2026-03-22: Expanded the Windows validation workflow to include analyzer output, NUnit-style Pester results, trusted `-WhatIf` smoke checks, and Windows Sandbox guidance.
 - 2026-03-23: Standardized analyzer validation on the repo-wide recursive command with explicit settings and `AllDiagnostics` exit handling.
+- 2026-03-23: Removed the tracked AutoHotkey subtree so `sysadmin-main` stays PowerShell-only while AutoHotkey work moves to its own repo.
+- 2026-03-23: Expanded the repo-local agent roster to a manager-pattern workflow with dedicated validation, security-boundary, and behavioral Pester specialists.
+- 2026-03-23: Extended the PowerShell Validation workflow triggers to cover `.codex/agents/`, `.agents/skills/`, and `sandbox/`, and standardized final remote confirmation via `gh workflow run`.
 - Keep this section focused on durable repo guidance, not task-by-task narrative.
