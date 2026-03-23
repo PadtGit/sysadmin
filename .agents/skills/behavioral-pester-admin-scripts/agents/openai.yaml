@@ -1,0 +1,4 @@
+interface:
+  display_name: "Behavioral Pester Admin Scripts"
+  short_description: "Behavior-focused Pester tests for admin scripts"
+  default_prompt: "Use $behavioral-pester-admin-scripts to convert contract string tests into behavioral Pester coverage with mocks and WhatIf safety assertions."

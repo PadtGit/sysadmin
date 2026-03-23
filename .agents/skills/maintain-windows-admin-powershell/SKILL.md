@@ -1,6 +1,6 @@
 ---
 name: maintain-windows-admin-powershell
-description: Maintain and review this repository's Windows system administration PowerShell scripts. Use when Codex needs to edit or audit files under PowerShell Script/*, adapt a PowerShell 7 change back to PowerShell 5.1, preserve WhatIf and admin-safe behavior, coordinate implementation and critic passes, or update AGENTS.md with stable repo discoveries after meaningful work.
+description: Maintain and review this repository's Windows system administration PowerShell scripts. Use when Codex needs to edit or audit files under PowerShell Script/*, adapt a PowerShell 7 change back to PowerShell 5.1, preserve WhatIf and admin-safe behavior, coordinate implementation and critic passes, delegate security hardening to $powershell-admin-security-hardening, delegate behavioral test design to $behavioral-pester-admin-scripts, or update AGENTS.md with stable repo discoveries after meaningful work.
 ---
 
 # Maintain Windows Admin Powershell
@@ -15,6 +15,18 @@ Maintain this repo with a staged workflow that starts from the canonical nested 
 2. Treat `PowerShell Script/*` as canonical.
 3. Prefer narrow, behavior-preserving edits over bulk rewrites.
 
+## Delegated Skills
+
+1. Use `$powershell-admin-security-hardening` when work touches trust boundaries:
+- Authenticode/publisher validation.
+- Secure output roots and ACL hardening.
+- Canonical path enforcement and reparse-point defense.
+
+2. Use `$behavioral-pester-admin-scripts` when work touches test depth:
+- Converting string/presence checks to behavioral mocks.
+- Verifying WhatIf safety and side-effect suppression.
+- Keeping V7 and V5 behavioral tests aligned.
+
 ## Workflow
 
 ### Round 1: Maintenance
@@ -26,17 +38,29 @@ Maintain this repo with a staged workflow that starts from the canonical nested 
 - Keep `-WhatIf` usable whenever the existing script already supports that pattern.
 - Validate the changed scripts directly with the commands from `AGENTS.md`. Use helper scripts only when their target tree matches the files you changed.
 
-### Round 2: Code-Quality Review
+### Round 2: Security and Behavioral Tests
+
+- If security boundaries changed, run the `$powershell-admin-security-hardening` checklist before finishing edits.
+- If tests are added or modified, run the `$behavioral-pester-admin-scripts` checklist before final validation.
+- Keep changes minimal and reversible; avoid broad rewrites unless explicitly requested.
+
+### Round 3: Code-Quality Review
 
 - Hand the changed files or diff to the critic agent after implementation.
 - Require a top-line `PASS` or `REVISE`.
 - Treat correctness, safety, regressions, V7/V5 drift, and broken validation as review blockers.
 - If the critic returns `REVISE`, fix only the concrete issues with behavioral or safety impact, then rerun focused validation.
 
-### Round 3: Change Analysis
+### Round 4: Change Analysis
 
 - Use Git metadata for recent-commit or last-N-days analysis.
 - Do not substitute file timestamps for commit windows.
+
+## Follow-On Roadmap
+
+1. `v7-v5-parity-and-backporting`
+2. `validation-and-ci-design-for-powershell-ops`
+3. `path-trust-filesystem-boundaries` (split out when security-boundary guidance becomes too large)
 
 ## Agent Handoffs
 

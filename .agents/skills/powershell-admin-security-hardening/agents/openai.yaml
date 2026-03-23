@@ -1,0 +1,4 @@
+interface:
+  display_name: "PowerShell Admin Security Hardening"
+  short_description: "Secure-by-default Windows admin script patterns"
+  default_prompt: "Use $powershell-admin-security-hardening to harden this PowerShell admin script with signature, path-trust, and ACL defenses."
