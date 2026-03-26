@@ -124,18 +124,20 @@ function Resolve-SecureDirectory {
         }
     }
 
+    $createdDirectory = $false
+
     if (Test-Path -LiteralPath $normalizedPath -PathType Container) {
         $directoryItem = Get-Item -LiteralPath $normalizedPath -Force -ErrorAction Stop
         if (Test-IsReparsePoint -Item $directoryItem) {
             throw ('Directory path must not be a reparse point: {0}' -f $normalizedPath)
         }
-
-        if (-not $WhatIfPreference) {
-            Set-RestrictedDirectoryAcl -Path $directoryItem.FullName
-        }
     }
     elseif ($PSCmdlet.ShouldProcess($normalizedPath, 'Create secure directory')) {
         New-Item -ItemType Directory -Path $normalizedPath -Force -ErrorAction Stop | Out-Null
+        $createdDirectory = $true
+    }
+
+    if ($createdDirectory) {
         Set-RestrictedDirectoryAcl -Path $normalizedPath
     }
 

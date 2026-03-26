@@ -122,6 +122,8 @@ function Resolve-SecureDirectory {
         }
     }
 
+    $createdDirectory = $false
+
     if (Test-Path -LiteralPath $normalizedPath -PathType Container) {
         $directoryItem = Get-Item -LiteralPath $normalizedPath -Force -ErrorAction Stop
         if (Test-IsReparsePoint -Item $directoryItem) {
@@ -130,9 +132,10 @@ function Resolve-SecureDirectory {
     }
     elseif (-not $WhatIfPreference) {
         New-Item -ItemType Directory -Path $normalizedPath -Force | Out-Null
+        $createdDirectory = $true
     }
 
-    if (-not $WhatIfPreference -and (Test-Path -LiteralPath $normalizedPath -PathType Container)) {
+    if ($createdDirectory) {
         Set-RestrictedDirectoryAcl -Path $normalizedPath
     }
 
