@@ -211,8 +211,11 @@
         PSUseConstrainedLanguageMode = @{
             Enable = $false
         }
+        # PSScriptAnalyzer 1.25.0 can throw NullReferenceException in this
+        # repo when PSUseCorrectCasing inspects some scripts, so keep the
+        # rule disabled until the pinned analyzer version changes.
         PSUseCorrectCasing = @{
-            Enable = $true
+            Enable = $false
         }
         PSUseDeclaredVarsMoreThanAssignments = @{
             Enable = $true

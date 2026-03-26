@@ -176,6 +176,27 @@ function Write-Finding {
     ) -ForegroundColor $Colour
 }
 
+function Get-AnalyzerFailureDiagnostic {
+    param(
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory)]
+        [string]$Message
+    )
+
+    return [pscustomobject]@{
+        Message     = $Message
+        Extent      = $null
+        RuleName    = 'PSScriptAnalyzerInvocationFailure'
+        Severity    = 'Error'
+        ScriptName  = $FilePath
+        ScriptPath  = $FilePath
+        Line        = $null
+        Column      = $null
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Resolve script root — guard against empty $PSScriptRoot (piped/stdin invoke)
 # ---------------------------------------------------------------------------
@@ -728,7 +749,9 @@ foreach ($File in $TargetFiles) {
         }
     }
     catch {
-        Write-Warning "Analyzer error on '$File': $_"
+        $AnalyzerErrorMessage = "Analyzer error on '$File': $_"
+        Write-Warning $AnalyzerErrorMessage
+        $AllResults.Add((Get-AnalyzerFailureDiagnostic -FilePath $File -Message $AnalyzerErrorMessage))
     }
 }
 
@@ -799,8 +822,8 @@ Set-Content -LiteralPath $OutTxtPath -Value $ReportLines -Encoding UTF8
 # ---------------------------------------------------------------------------
 # Write JSON report
 # ---------------------------------------------------------------------------
-$Results | ConvertTo-Json -Depth 8 |
-    Set-Content -Path $OutJsonPath -Encoding UTF8
+ConvertTo-Json -InputObject @($Results) -Depth 8 |
+    Set-Content -LiteralPath $OutJsonPath -Encoding UTF8
 
 # ---------------------------------------------------------------------------
 # Write SARIF 2.1.0 report
