@@ -9,6 +9,6 @@
     </MappedFolder>
   </MappedFolders>
   <LogonCommand>
-    <Command>powershell.exe -NoExit -Command "Set-Location 'C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main'"</Command>
+    <Command>pwsh.exe -NoExit -Command "Set-Location 'C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main'"</Command>
   </LogonCommand>
 </Configuration>

@@ -1,4 +1,4 @@
-@{
+﻿@{
     IncludeDefaultRules = $true
     Severity = @(
         'Error'
@@ -181,9 +181,9 @@
         PSUseCmdletCorrectly = @{
             Enable = $true
         }
-        # The repo's canonical layout mixes separate V5 and V7 trees, so a
-        # single repo-wide analyzer pass cannot apply one TargetProfiles set
-        # without producing false positives in the other tree.
+        # Keep compatibility rules disabled during the runtime-branch split so
+        # the branch preserves the existing analyzer baseline while the
+        # flattened single-runtime layout settles.
         PSUseCompatibleCmdlets = @{
             Enable = $false
         }

@@ -2,6 +2,8 @@
 
 This changelog captures weekly repo-level highlights from landed git history and supporting docs.
 
+> Branch note: `Powershell.7` is the single-runtime PowerShell 7 branch. Historical entries below may reference the pre-split mirrored V5/V7 layout from `main`.
+
 ## Week of March 23-29, 2026
 
 ### Highlights
@@ -77,3 +79,4 @@ This changelog captures weekly repo-level highlights from landed git history and
 - `security_best_practices_report.md` added a structured review of installer trust, predictable root-level outputs, reparse-point exposure, and missing security-focused tests.
 - The March 21, 2026 hardening pass appears to be the direct follow-through on that review, including new regression tests in both script trees.
 - The maintenance skill and `AGENTS.md` now explicitly steer follow-on work toward the security-hardening and behavioral Pester patterns introduced this week.
+

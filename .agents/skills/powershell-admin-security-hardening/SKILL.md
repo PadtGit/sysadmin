@@ -1,6 +1,6 @@
 ---
 name: powershell-admin-security-hardening
-description: Apply secure-by-default hardening patterns to this repo's Windows admin PowerShell scripts. Use when changes involve Authenticode or trusted-publisher validation, output-root hardening, restrictive ACL setup, canonical path trust checks, or reparse-point defenses across V7 and V5 script pairs.
+description: Apply secure-by-default hardening patterns to this repository's Windows admin PowerShell scripts. Use when changes involve Authenticode or trusted-publisher validation, output-root hardening, restrictive ACL setup, canonical path trust checks, or reparse-point defenses in this PowerShell 7 branch.
 ---
 
 # PowerShell Admin Security Hardening
@@ -11,11 +11,10 @@ Harden script behavior around trust boundaries while preserving existing repo co
 
 ## Core Workflow
 
-1. Map the exact V7 and V5 script pair and current contract before editing.
-2. Apply hardening in V7 first.
-3. Backport equivalent behavior to V5 with compatible syntax.
-4. Validate with focused `-WhatIf` runs and targeted Pester coverage.
-5. Summarize boundary decisions and any intentional V7/V5 differences.
+1. Map the exact script and current contract before editing.
+2. Apply the smallest hardening change that closes the boundary.
+3. Validate with focused `-WhatIf` runs and targeted Pester coverage.
+4. Summarize boundary decisions and any intentionally preserved behavior.
 
 ## Security Boundary Patterns
 
@@ -45,20 +44,19 @@ Harden script behavior around trust boundaries while preserving existing repo co
 
 ## Validation Expectations
 
-1. Run focused `-WhatIf` checks for each modified script variant.
+1. Run focused `-WhatIf` checks for each modified script.
 2. Add or update regression tests for the exact boundary being hardened.
 3. Confirm no return to weak defaults such as root-level temp output paths.
 
 ## Forward-Test Prompts
 
-Use these for realistic forward-testing without leaking answers:
+1. Installer trust scenario:
+- "Use `$powershell-admin-security-hardening to harden this installer script so elevated execution only occurs for trusted signed packages and logs use secure roots."
 
-1. Adobe trust scenario:
-- "Use $powershell-admin-security-hardening to harden the Adobe installer refresh scripts so elevated execution only occurs for trusted signed packages and logs use secure roots."
-
-2. Cleanup/orphan boundary scenario:
-- "Use $powershell-admin-security-hardening to harden recursive cleanup and orphan-move scripts against untrusted destinations and reparse points while preserving WhatIf behavior."
+2. Cleanup boundary scenario:
+- "Use `$powershell-admin-security-hardening to harden this cleanup or orphan-move script against untrusted destinations and reparse points while preserving WhatIf behavior."
 
 ## References
 
 Load [security-boundary-patterns.md](references/security-boundary-patterns.md) for implementation checklist details and acceptance criteria.
+

@@ -1,4 +1,5 @@
 interface:
   display_name: "Maintain Windows Admin PowerShell"
   short_description: "Windows admin PowerShell maintenance helper"
-  default_prompt: "Use $maintain-windows-admin-powershell to maintain V7 scripts, adapt them to V5, validate WhatIf behavior, and update AGENTS.md."
+  default_prompt: "Use $maintain-windows-admin-powershell to maintain this PowerShell 7 script branch, validate WhatIf behavior, and update AGENTS.md."
+

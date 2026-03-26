@@ -1,5 +1,7 @@
 # Security Best Practices Review
 
+> Branch note: `Powershell.7` is the single-runtime PowerShell 7 branch. File references below may point to the pre-split mirrored V5/V7 layout that was reviewed on `main`.
+
 ## Executive Summary
 
 This PowerShell admin-scripts repo is in better shape than many operational codebases: I did not find any hardcoded secrets, dynamic code execution (`Invoke-Expression`/`iex`), or download-and-run behavior, and the canonical scripts generally preserve `Set-StrictMode`, `$ErrorActionPreference = 'Stop'`, and `SupportsShouldProcess`.
@@ -114,3 +116,4 @@ Recommended follow-up:
 2. Move default log/export/quarantine roots out of `C:\Temp` and other generic root-level folders; create unique filenames and restricted ACLs.
 3. Add reparse-point and destination-trust guards to the elevated cleanup and orphan-move script pairs.
 4. Add focused Pester coverage for the security boundaries above so future maintenance does not regress them.
+

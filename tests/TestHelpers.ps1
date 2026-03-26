@@ -1,4 +1,4 @@
-Set-StrictMode -Version 3.0
+﻿Set-StrictMode -Version 3.0
 
 $env:SYSADMIN_MAIN_REPO_ROOT = Split-Path -Path $PSScriptRoot -Parent
 
@@ -64,10 +64,6 @@ function Global:Invoke-WhatIfScriptObject {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('pwsh', 'powershell')]
-        [string]$Shell,
-
-        [Parameter(Mandatory = $true)]
         [string]$RelativeScriptPath
     )
 
@@ -76,12 +72,7 @@ function Global:Invoke-WhatIfScriptObject {
         throw ('Script not found: {0}' -f $ScriptPath)
     }
 
-    $ShellPath = if ($Shell -eq 'powershell') {
-        Join-Path -Path $env:SystemRoot -ChildPath 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    }
-    else {
-        (Get-Command -Name 'pwsh.exe' -ErrorAction Stop).Source
-    }
+    $ShellPath = (Get-Command -Name 'pwsh.exe' -ErrorAction Stop).Source
 
     $EscapedScriptPath = $ScriptPath.Replace("'", "''")
     $Invocation = @"

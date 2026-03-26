@@ -38,5 +38,6 @@
 
 1. Tests assert behavior and side effects, not only static string presence.
 2. WhatIf mode protects mutating operations in each covered boundary.
-3. V7 and V5 behaviors are covered where parity is expected.
+3. Tests cover the supported branch runtime and current behavior boundaries.
 4. Tests remain deterministic and pass in CI without external dependencies.
+

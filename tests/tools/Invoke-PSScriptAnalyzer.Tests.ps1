@@ -1,4 +1,4 @@
-. (Resolve-Path (Join-Path $PSScriptRoot '..\TestHelpers.ps1')).Path
+﻿. (Resolve-Path (Join-Path $PSScriptRoot '..\TestHelpers.ps1')).Path
 
 Describe 'Invoke-PSScriptAnalyzer helper' {
 
@@ -112,8 +112,8 @@ function Measure-ThrowingRule {
             $jsonPath = Join-Path $tempRoot 'psscriptanalyzer.json'
             $sarifPath = Join-Path $tempRoot 'psscriptanalyzer.sarif'
             $targetPaths = @(
-                Join-Path $script:RepoRoot 'PowerShell Script\V5\Printer\Restart.spool.delete.printerQ.ps1'
-                Join-Path $script:RepoRoot 'tools\Invoke-PSScriptAnalyzer.ps1'
+                Join-Path $script:RepoRoot 'PowerShell Script\Printer\Restart.spool.delete.printerQ.ps1'
+                Join-Path $script:RepoRoot 'PowerShell Script\windows-maintenance\Reset.Network.RebootPC.ps1'
             )
             $escapedTargetPaths = @(
                 foreach ($targetPath in $targetPaths) {
