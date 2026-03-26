@@ -55,7 +55,7 @@ Maintain this Windows PowerShell 5.1 branch with a manager-pattern workflow that
 ### Round 5: Validation
 
 - Have `validation-runner` execute the repo-wide analyzer command, the CI-style Pester configuration, the trusted local `-WhatIf` smoke checks, and the Windows Sandbox sanity check described in `AGENTS.md`.
-- After local validation passes, dispatch `gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin` and watch the latest run to completion.
+- After local validation passes, dispatch `gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin --ref Powershell.5` and watch the latest run to completion.
 
 ### Round 6: Code-Quality Review
 

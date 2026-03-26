@@ -20,7 +20,7 @@
 - `tools/Invoke-PSScriptAnalyzer.ps1`: analyzer runner.
 - `tools/PSScriptAnalyzerSettings.psd1`: canonical analyzer settings for repo-wide validation.
 - `.github/workflows/powershell-validation.yml`: CI entrypoint for analyzer, Pester, trusted `-WhatIf` smoke checks, and validation artifact upload.
-- `sandbox/sysadmin-main-validation.wsb`: disposable Windows Sandbox profile that maps the repo read-only into `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main`, disables networking and vGPU, and opens PowerShell at that path.
+- `sandbox/sysadmin-main-validation.wsb`: disposable Windows Sandbox profile that maps `C:\Users\Bob\Documents\sysadmin-Powershell.5` read-only into `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main`, disables networking and vGPU, and opens PowerShell at that path.
 - `docs/windows-sandbox-validation.md`: manual validation flow for risky scripts in Windows Sandbox.
 - `docs/sysadmin-main-multi-agent-sop.md`: current operating notes for agent roles, validation surfaces, and repo workflow expectations.
 
@@ -95,7 +95,7 @@ Start-Process '.\sandbox\sysadmin-main-validation.wsb'
 - GitHub workflow dispatch:
 
 ```powershell
-gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin
+gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin --ref Powershell.5
 $runId = gh run list --workflow "PowerShell Validation" --repo PadtGit/sysadmin --limit 1 --json databaseId --jq '.[0].databaseId'
 gh run watch $runId --repo PadtGit/sysadmin --exit-status
 ```
@@ -122,7 +122,7 @@ gh run watch $runId --repo PadtGit/sysadmin --exit-status
 7. Playbook sync
    - Have `playbook-librarian` sync `AGENTS.md` and `docs/*` when workflow wording or durable repo knowledge changed.
 8. GitHub workflow dispatch
-   - After local validation and review pass, dispatch `PowerShell Validation` with `gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin` and watch the latest run to completion.
+   - After local validation and review pass, dispatch `PowerShell Validation` with `gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin --ref Powershell.5` and watch the latest run to completion.
 9. Change analysis
    - Use Git metadata for recent-commit or last-N-days analysis.
    - Do not substitute file timestamps for commit windows.
@@ -149,9 +149,11 @@ gh run watch $runId --repo PadtGit/sysadmin --exit-status
 - `tools\Invoke-PSScriptAnalyzer.ps1` writes to `artifacts/validation/psscriptanalyzer.txt` by default.
 - CI exports Pester results to `artifacts/validation/pester-results.xml` and uploads `artifacts/validation/` as the validation artifact.
 - Pester 5 does not support combining `-CI` with `-Configuration`; use `New-PesterConfiguration` for CI-style NUnit XML output.
-- `sandbox\sysadmin-main-validation.wsb` maps the repo into `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main` as read-only with networking and vGPU disabled.
+- `sandbox\sysadmin-main-validation.wsb` maps `C:\Users\Bob\Documents\sysadmin-Powershell.5` into `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main` as read-only with networking and vGPU disabled.
+- Keep the in-Sandbox working folder at `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main` even on the `Powershell.5` branch so existing validation commands and docs stay stable after the branch split.
 - Workflow-surface changes under `.codex/agents/`, `.agents/skills/`, and `sandbox/` should trigger the PowerShell Validation workflow so docs, agents, and validation stay aligned.
-- The preferred validation finish is local analyzer, Pester, smoke, and sandbox checks first, then `gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin` for remote confirmation.
+- `gh workflow run` targets the default branch unless `--ref` is supplied; use `--ref Powershell.5` for this split branch so remote confirmation validates the correct layout.
+- The preferred validation finish is local analyzer, Pester, smoke, and sandbox checks first, then `gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin --ref Powershell.5` for remote confirmation.
 
 ## Improvement Notes
 
@@ -159,4 +161,5 @@ gh run watch $runId --repo PadtGit/sysadmin --exit-status
 - 2026-03-22: Added repo-specific security-hardening and behavioral Pester skills and documented the multi-agent operating flow under `docs/`.
 - 2026-03-23: Standardized analyzer validation on the repo-wide recursive command with explicit settings and `AllDiagnostics` exit handling.
 - 2026-03-26: Split the runtime-specific work onto the `Powershell.5` branch and flattened `PowerShell Script/*` plus `tests/*` for Windows PowerShell 5.1.
+- 2026-03-26: Retargeted Windows Sandbox validation so the V5 branch maps from `C:\Users\Bob\Documents\sysadmin-Powershell.5` while preserving the stable in-Sandbox path `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main`, and documented `--ref Powershell.5` for GitHub workflow dispatch on the split branch.
 - Keep this section focused on durable repo guidance, not task-by-task narrative.

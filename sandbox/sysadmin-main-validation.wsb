@@ -3,7 +3,7 @@
   <VGpu>Disable</VGpu>
   <MappedFolders>
     <MappedFolder>
-      <HostFolder>C:\Users\Bob\Documents\sysadmin-main</HostFolder>
+      <HostFolder>C:\Users\Bob\Documents\sysadmin-Powershell.5</HostFolder>
       <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main</SandboxFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>

@@ -54,12 +54,12 @@
 7. Playbook sync
    - `playbook-librarian` updates `AGENTS.md` and `docs/*` when workflow wording or durable repo knowledge drifted during the task.
 8. Dispatch GitHub workflow
-   - Run the repo workflow only after local validation and critic review pass.
+   - Run the repo workflow only after local validation and critic review pass, and dispatch it with `--ref Powershell.5` so the split branch is what GitHub validates.
 
 ## Validation Surface
 
 - Use the repo-wide recursive analyzer command with `tools\Invoke-PSScriptAnalyzer.ps1`, `tools\PSScriptAnalyzerSettings.psd1`, `-EnableExit`, and `-ExitCodeMode AllDiagnostics`.
 - Use the CI-style Pester configuration that writes results to `artifacts/validation/pester-results.xml`.
 - Keep smoke checks focused on the trusted `-WhatIf` commands documented in `AGENTS.md`.
-- Use `sandbox/sysadmin-main-validation.wsb` as the disposable validation shell for risky scripts. The profile maps the repo read-only, disables networking and vGPU, and opens PowerShell at `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main`.
+- Use `sandbox/sysadmin-main-validation.wsb` as the disposable validation shell for risky scripts. The profile maps `C:\Users\Bob\Documents\sysadmin-Powershell.5` read-only into `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main`, disables networking and vGPU, and opens PowerShell there.
 - Publish validation and test artifacts from `artifacts/validation/`.
