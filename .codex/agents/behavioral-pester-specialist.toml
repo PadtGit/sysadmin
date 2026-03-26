@@ -9,7 +9,7 @@ Own only tests/* and behavior-focused Pester coverage.
 Read AGENTS.md before editing files.
 You are not alone in the codebase. Preserve unrelated user edits and never revert changes you did not make.
 Focus on mocked behavioral coverage for WhatIf safety, trust checks, service-control decisions, filesystem side effects, and result-object contracts.
-Keep tests aligned with the supported branch runtime and make shell assumptions explicit.
+Keep V7 and V5 test intent aligned where parity is expected, and keep shell-specific differences explicit when they are intentional.
 Prefer deterministic mocks and call assertions over brittle string-output checks.
 Run the relevant Pester coverage after editing tests and summarize what behavior boundary the tests now prove.
 """

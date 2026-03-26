@@ -36,15 +36,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install test and analyzer modules
-        shell: powershell
+        shell: pwsh
         run: |
           Install-Module Pester -Repository PSGallery -Scope CurrentUser -RequiredVersion 5.7.1 -Force -SkipPublisherCheck
           Install-Module PSScriptAnalyzer -Repository PSGallery -Scope CurrentUser -RequiredVersion 1.25.0 -Force -SkipPublisherCheck
 
       - name: Run PSScriptAnalyzer
-        shell: powershell
+        shell: pwsh
         run: |
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\tools\Invoke-PSScriptAnalyzer.ps1 `
+          pwsh -NoProfile -ExecutionPolicy Bypass -File .\tools\Invoke-PSScriptAnalyzer.ps1 `
             -Path . `
             -Recurse `
             -SettingsPath .\tools\PSScriptAnalyzerSettings.psd1 `
@@ -52,7 +52,7 @@ jobs:
             -ExitCodeMode AllDiagnostics
 
       - name: Run Pester
-        shell: powershell
+        shell: pwsh
         run: |
           $resultPath = Join-Path $PWD 'artifacts\validation\pester-results.xml'
           New-Item -ItemType Directory -Force -Path (Split-Path -Path $resultPath -Parent) | Out-Null
@@ -66,10 +66,12 @@ jobs:
           Invoke-Pester -Configuration $config
 
       - name: Run trusted WhatIf smoke checks
-        shell: powershell
+        shell: pwsh
         run: |
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\Printer\Restart.Spool.DeletePrinterQSimple.ps1' -WhatIf
-          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\windows-maintenance\Nettoyage.Avance.Windows.Sauf.logserreur.ps1' -WhatIf
+          pwsh -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\V7\Printer\Restart.Spool.DeletePrinterQSimple.ps1' -WhatIf
+          pwsh -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\V7\windows-maintenance\Reset.Network.RebootPC.ps1' -WhatIf
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\V5\Printer\Restart.Spool.DeletePrinterQSimple.ps1' -WhatIf
+          & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File '.\PowerShell Script\V5\windows-maintenance\Nettoyage.Avance.Windows.Sauf.logserreur.ps1' -WhatIf
 
       - name: Upload validation artifacts
         uses: actions/upload-artifact@v4
