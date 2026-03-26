@@ -718,7 +718,14 @@ if (-not $TargetFiles -or @($TargetFiles).Count -eq 0) {
 Write-Section 'PSScriptAnalyzer - Running'
 
 $AllResults = [System.Collections.Generic.List[object]]::new()
-$UseRuntimeSettingsOverrides = (@($CustomRulePath).Count -gt 0) -or $RecurseCustomRulePath -or $IncludeDefaultRules
+$HasCustomRulePath = $false
+foreach ($CandidatePath in @($CustomRulePath)) {
+    if (-not [string]::IsNullOrWhiteSpace([string]$CandidatePath)) {
+        $HasCustomRulePath = $true
+        break
+    }
+}
+$UseRuntimeSettingsOverrides = $HasCustomRulePath -or [bool]$RecurseCustomRulePath -or [bool]$IncludeDefaultRules
 $SettingsArgument = $null
 
 if ($Settings) {
