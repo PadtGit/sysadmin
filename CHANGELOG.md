@@ -2,6 +2,43 @@
 
 This changelog captures weekly repo-level highlights from landed git history and supporting docs.
 
+## Week of March 23-29, 2026
+
+### Highlights
+
+- Refined the repo’s operating model into a manager-pattern workflow with dedicated explorer, implementation, validation, security, behavioral-Pester, critic, and playbook agent roles, while removing the leftover AutoHotkey subtree so `sysadmin-main` stays PowerShell-only.
+- Promoted validation from a basic helper into a pinned and CI-aligned analyzer pipeline by standardizing on PSScriptAnalyzer `1.25.0`, expanding `tools/Invoke-PSScriptAnalyzer.ps1`, and aligning workflow, settings, and artifact handling around the recursive repo-wide command.
+- Reworked mirrored V7 and V5 coverage toward behavioral Pester tests, then followed through with another hardening pass across printer, Adobe, orphaned-installer, and Windows-maintenance scripts.
+- Closed the week by fixing analyzer crash handling and stale JSON artifact behavior, with dedicated tests to keep analyzer failures visible instead of silently losing signal.
+
+### PRs and Landed Changes
+
+- March 23, 2026: PSScriptAnalyzer was pinned to `1.25.0`, the GitHub validation workflow was updated to use explicit analyzer and Pester configuration, and the analyzer helper was expanded to emit aligned text, JSON, and SARIF outputs.
+- March 23, 2026: The analyzer helper received a follow-up auto-update that removed a stale tracked SARIF artifact and improved report-generation behavior.
+- March 23, 2026: The multi-agent workflow docs, repo-local maintenance skill, and `.codex/agents/*.toml` definitions were refreshed, and the lingering `AutoHotkey/` files were removed.
+- March 25, 2026: A broad admin-script hardening pass landed across mirrored V7 and V5 Adobe, printer, orphaned-installer, and cleanup scripts, with matching regression coverage updates.
+- March 25, 2026: `tools/Invoke-PSScriptAnalyzer.ps1` was fixed to surface analyzer invocation failures as diagnostics and to overwrite stale JSON output when a clean run returns no findings.
+- March 25, 2026: A new `tests/tools/Invoke-PSScriptAnalyzer.Tests.ps1` suite landed to lock in the analyzer-helper crash-handling and artifact-reset behavior.
+
+### Rollouts
+
+- Validation is now more explicitly standardized around the recursive analyzer command, pinned `PSScriptAnalyzer 1.25.0`, CI-style `New-PesterConfiguration`, and uploaded artifacts under `artifacts/validation/`.
+- The repo-local agent roster now covers dedicated validation, security-boundary, and behavioral-Pester specialist roles, with `AGENTS.md`, the maintenance skill, and `docs/sysadmin-main-multi-agent-sop.md` kept in sync.
+- Behavioral Pester coverage broadened from contract-style checks toward mocked behavior and side-effect assertions for mirrored V7 and V5 admin scripts.
+- Analyzer output handling is now safer for automation consumers because empty clean runs explicitly reset JSON findings and invocation crashes are recorded as structured diagnostics.
+
+### Incidents and Fixes
+
+- The most visible tooling regression this week was analyzer instability: some repo files could trigger PSScriptAnalyzer invocation failures, and clean reruns could leave stale JSON findings behind. The March 25, 2026 fixes now record invocation failures as explicit diagnostics and force empty JSON output on clean passes.
+- This week also included a broader admin-script hardening sweep rather than a single script outage. The follow-on regression coverage indicates the focus was preventing quiet drift across mirrored V7 and V5 script pairs.
+- No separate outage or postmortem documents were found in the repo for this week; the incident summary above is based on landed bug-fix and hardening commits.
+
+### Reviews
+
+- The repo’s validation and workflow surfaces were reviewed and tightened in lockstep across `AGENTS.md`, `.agents/skills/maintain-windows-admin-powershell/SKILL.md`, `.codex/agents/*.toml`, and `.github/workflows/powershell-validation.yml`.
+- The week’s testing emphasis shifted further toward behavioral Pester coverage, especially around printer, orphaned-installer, analyzer-helper, and Windows-maintenance flows.
+- The analyzer settings now document a concrete pinned-version caveat by keeping `PSUseCorrectCasing` disabled until the repo intentionally moves off the current analyzer baseline.
+
 ## Week of March 16-22, 2026
 
 ### Highlights
