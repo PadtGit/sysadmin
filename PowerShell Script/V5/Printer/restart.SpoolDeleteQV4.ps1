@@ -17,6 +17,7 @@ $TimeoutSeconds = 30
 $LogDirectory = Join-Path -Path $CommonApplicationDataPath -ChildPath 'sysadmin-main\Logs\Printer'
 $LogFilePrefix = 'print-queue'
 $AllowedExtensions = @('.spl', '.shd')
+$TemporaryFilePattern = 'FP*.tmp'
 
 function Test-PathWithinAllowedRoot {
     param(
@@ -56,6 +57,7 @@ function Test-IsReparsePoint {
 }
 
 function Set-RestrictedDirectoryAcl {
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path
@@ -91,7 +93,9 @@ function Set-RestrictedDirectoryAcl {
         [void]$Acl.AddAccessRule($Rule)
     }
 
-    Set-Acl -LiteralPath $Directory.FullName -AclObject $Acl
+    if ($PSCmdlet.ShouldProcess($Directory.FullName, 'Apply restricted directory ACL')) {
+        Set-Acl -LiteralPath $Directory.FullName -AclObject $Acl -ErrorAction Stop
+    }
 }
 
 function Resolve-SecureDirectory {
@@ -136,7 +140,7 @@ function Resolve-SecureDirectory {
     return $NormalizedPath
 }
 
-function New-UniqueChildPath {
+function Get-UniqueChildPath {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Directory,
@@ -149,19 +153,13 @@ function New-UniqueChildPath {
     )
 
     $Timestamp = Get-Date -Format 'yyyyMMdd-HHmmssfff'
-    $CandidatePath = Join-Path -Path $Directory -ChildPath ('{0}-{1}{2}' -f $FileNamePrefix, $Timestamp, $Extension)
-    $Counter = 1
-
-    while (Test-Path -LiteralPath $CandidatePath -PathType Leaf) {
-        $CandidatePath = Join-Path -Path $Directory -ChildPath ('{0}-{1}-{2}{3}' -f $FileNamePrefix, $Timestamp, $Counter, $Extension)
-        $Counter++
-    }
-
-    return $CandidatePath
+    $GuidSuffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
+    return (Join-Path -Path $Directory -ChildPath ('{0}-{1}-{2}{3}' -f $FileNamePrefix, $Timestamp, $GuidSuffix, $Extension))
 }
 
 function Invoke-LoggedPrintQueueCleanup {
     [CmdletBinding(SupportsShouldProcess = $true)]
+    [OutputType([pscustomobject])]
     param(
         [Parameter(Mandatory = $true)]
         [bool]$RequireAdmin,
@@ -185,7 +183,10 @@ function Invoke-LoggedPrintQueueCleanup {
         [string]$LogFilePrefix,
 
         [Parameter(Mandatory = $true)]
-        [string[]]$AllowedExtensions
+        [string[]]$AllowedExtensions,
+
+        [Parameter()]
+        [string]$TemporaryFilePattern = 'FP*.tmp'
     )
 
     if ($RequireAdmin -and -not $WhatIfPreference -and -not $IsAdministrator) {
@@ -193,10 +194,11 @@ function Invoke-LoggedPrintQueueCleanup {
     }
 
     $SecureLogDirectory = Resolve-SecureDirectory -Path $LogDirectory -AllowedRoots @($StorageRoot)
-    $LogPath = New-UniqueChildPath -Directory $SecureLogDirectory -FileNamePrefix $LogFilePrefix -Extension '.log'
+    $LogPath = Get-UniqueChildPath -Directory $SecureLogDirectory -FileNamePrefix $LogFilePrefix -Extension '.log'
     $TranscriptStarted = $false
     $DeletedCount = 0
     $Status = 'Completed'
+    $Files = @()
     $Service = Get-Service -Name $ServiceName -ErrorAction Stop
     $ServiceWasRunning = $Service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running
     $ServiceWasStopped = $false
@@ -207,14 +209,21 @@ function Invoke-LoggedPrintQueueCleanup {
     }
 
     try {
-        if ($ServiceWasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop service')) {
+        if ($ServiceWasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop Print Spooler')) {
             Stop-Service -Name $ServiceName -Force -ErrorAction Stop
-            (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds($TimeoutSeconds))
+            $Service.Refresh()
+            $Service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds($TimeoutSeconds))
             $ServiceWasStopped = $true
         }
 
         try {
-            $Files = @(Get-ChildItem -LiteralPath $SpoolDirectory -File -ErrorAction SilentlyContinue | Where-Object { $AllowedExtensions -contains $_.Extension.ToLowerInvariant() })
+            $Files = @(
+                Get-ChildItem -LiteralPath $SpoolDirectory -File -ErrorAction SilentlyContinue |
+                    Where-Object {
+                        $_.Extension -in '.spl', '.shd' -or
+                        $_.Name -like $TemporaryFilePattern
+                    }
+            )
 
             foreach ($File in $Files) {
                 if ($PSCmdlet.ShouldProcess($File.FullName, 'Remove spool file')) {
@@ -224,9 +233,10 @@ function Invoke-LoggedPrintQueueCleanup {
             }
         }
         finally {
-            if ($ServiceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
+            if ($ServiceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Restart Print Spooler')) {
                 Start-Service -Name $ServiceName -ErrorAction Stop
-                (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds($TimeoutSeconds))
+                $Service.Refresh()
+                $Service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds($TimeoutSeconds))
             }
         }
     }
@@ -242,12 +252,16 @@ function Invoke-LoggedPrintQueueCleanup {
 
     [pscustomobject]@{
         ServiceName  = $ServiceName
+        Service      = $ServiceName
         QueuePath    = $SpoolDirectory
         LogPath      = $LogPath
         FileCount    = $Files.Count
         DeletedCount = $DeletedCount
+        DeletedFiles = $DeletedCount
         ServiceWasUp = $ServiceWasRunning
         Status       = $Status
+        Success      = $true
+        WhatIfRun    = [bool]$WhatIfPreference
     }
 }
 
@@ -260,9 +274,10 @@ try {
         -TimeoutSeconds $TimeoutSeconds `
         -LogDirectory $LogDirectory `
         -LogFilePrefix $LogFilePrefix `
-        -AllowedExtensions $AllowedExtensions
+        -AllowedExtensions $AllowedExtensions `
+        -TemporaryFilePattern $TemporaryFilePattern
 }
 catch {
-    Write-Error $_.Exception.Message
+    Write-Error -ErrorRecord $_
     exit 1
 }

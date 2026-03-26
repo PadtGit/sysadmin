@@ -2,7 +2,7 @@ Describe 'V7 complete cleanup hardening' {
     . (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
 
     It 'uses trusted cleanup specs and reparse-point guards' {
-        $ScriptPath = Join-Path $global:SysadminMainRepoRoot 'PowerShell Script\V7\windows-maintenance\Nettoyage.Complet.Caches.Windows.ps1'
+        $ScriptPath = Join-Path (Get-SysadminMainRepoRoot) 'PowerShell Script\V7\windows-maintenance\Nettoyage.Complet.Caches.Windows.ps1'
         $Content = Get-Content -LiteralPath $ScriptPath -Raw
 
         $Content | Should -Match 'CleanupSpecs'

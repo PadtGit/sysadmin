@@ -56,6 +56,7 @@ function Test-IsReparsePoint {
 }
 
 function Set-RestrictedDirectoryAcl {
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory)]
         [string]$Path
@@ -91,10 +92,14 @@ function Set-RestrictedDirectoryAcl {
         [void]$acl.AddAccessRule($rule)
     }
 
-    Set-Acl -LiteralPath $directory.FullName -AclObject $acl
+    if ($PSCmdlet.ShouldProcess($directory.FullName, 'Apply restricted directory ACL')) {
+        Set-Acl -LiteralPath $directory.FullName -AclObject $acl -ErrorAction Stop
+    }
 }
 
 function Resolve-SecureDirectory {
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory)]
         [string]$Path,
@@ -124,19 +129,20 @@ function Resolve-SecureDirectory {
         if (Test-IsReparsePoint -Item $directoryItem) {
             throw ('Directory path must not be a reparse point: {0}' -f $normalizedPath)
         }
-    }
-    elseif (-not $WhatIfPreference) {
-        New-Item -ItemType Directory -Path $normalizedPath -Force | Out-Null
-    }
 
-    if (-not $WhatIfPreference -and (Test-Path -LiteralPath $normalizedPath -PathType Container)) {
+        if (-not $WhatIfPreference) {
+            Set-RestrictedDirectoryAcl -Path $directoryItem.FullName
+        }
+    }
+    elseif ($PSCmdlet.ShouldProcess($normalizedPath, 'Create secure directory')) {
+        New-Item -ItemType Directory -Path $normalizedPath -Force -ErrorAction Stop | Out-Null
         Set-RestrictedDirectoryAcl -Path $normalizedPath
     }
 
     return $normalizedPath
 }
 
-function New-UniqueChildPath {
+function Get-UniqueChildPath {
     param(
         [Parameter(Mandatory)]
         [string]$Directory,
@@ -149,19 +155,13 @@ function New-UniqueChildPath {
     )
 
     $timestamp = Get-Date -Format 'yyyyMMdd-HHmmssfff'
-    $candidatePath = Join-Path -Path $Directory -ChildPath ('{0}-{1}{2}' -f $FileNamePrefix, $timestamp, $Extension)
-    $counter = 1
-
-    while (Test-Path -LiteralPath $candidatePath -PathType Leaf) {
-        $candidatePath = Join-Path -Path $Directory -ChildPath ('{0}-{1}-{2}{3}' -f $FileNamePrefix, $timestamp, $counter, $Extension)
-        $counter++
-    }
-
-    return $candidatePath
+    $guidSuffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
+    return (Join-Path -Path $Directory -ChildPath ('{0}-{1}-{2}{3}' -f $FileNamePrefix, $timestamp, $guidSuffix, $Extension))
 }
 
 function Invoke-ClearPrintQueueLogged {
     [CmdletBinding(SupportsShouldProcess)]
+    [OutputType([pscustomobject])]
     param(
         [Parameter(Mandatory)]
         [string]$ServiceName,
@@ -176,11 +176,14 @@ function Invoke-ClearPrintQueueLogged {
         [string]$LogDirectory,
 
         [Parameter(Mandatory)]
-        [string]$LogFilePrefix
+        [string]$LogFilePrefix,
+
+        [Parameter()]
+        [string]$StorageRoot = $ScriptConfig.StorageRoot
     )
 
-    $secureLogDirectory = Resolve-SecureDirectory -Path $LogDirectory -AllowedRoots @($ScriptConfig.StorageRoot)
-    $logPath = New-UniqueChildPath -Directory $secureLogDirectory -FileNamePrefix $LogFilePrefix -Extension '.log'
+    $secureLogDirectory = Resolve-SecureDirectory -Path $LogDirectory -AllowedRoots @($StorageRoot)
+    $logPath = Get-UniqueChildPath -Directory $secureLogDirectory -FileNamePrefix $LogFilePrefix -Extension '.log'
     $transcriptStarted = $false
 
     if (-not $WhatIfPreference -and $PSCmdlet.ShouldProcess($logPath, 'Start transcript')) {
@@ -193,17 +196,19 @@ function Invoke-ClearPrintQueueLogged {
         $wasRunning = $service.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running
         $serviceWasStopped = $false
 
-        if ($wasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop service')) {
+        if ($wasRunning -and $PSCmdlet.ShouldProcess($ServiceName, 'Stop Print Spooler')) {
             Stop-Service -Name $ServiceName -Force -ErrorAction Stop
-            (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds($TimeoutSeconds))
+            $service.Refresh()
+            $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds($TimeoutSeconds))
             $serviceWasStopped = $true
         }
 
         try {
             $deletedCount = 0
+            $targetExtensions = @('.spl', '.shd')
             $files = @(
                 Get-ChildItem -LiteralPath $SpoolDirectory -File -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Extension -in '.spl', '.shd' }
+                    Where-Object { $_.Extension -in $targetExtensions -or $_.Name -like 'FP*.tmp' }
             )
 
             foreach ($file in $files) {
@@ -218,12 +223,16 @@ function Invoke-ClearPrintQueueLogged {
                 LogPath      = $logPath
                 ServiceName  = $ServiceName
                 ServiceWasUp = $wasRunning
+                Service      = $ServiceName
+                Success      = $true
+                WhatIfRun    = [bool]$WhatIfPreference
             }
         }
         finally {
-            if ($serviceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Start service')) {
+            if ($serviceWasStopped -and $PSCmdlet.ShouldProcess($ServiceName, 'Restart Print Spooler')) {
                 Start-Service -Name $ServiceName -ErrorAction Stop
-                (Get-Service -Name $ServiceName -ErrorAction Stop).WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds($TimeoutSeconds))
+                $service.Refresh()
+                $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds($TimeoutSeconds))
             }
         }
     }
@@ -235,14 +244,9 @@ function Invoke-ClearPrintQueueLogged {
 }
 
 try {
-    Invoke-ClearPrintQueueLogged `
-        -ServiceName $ScriptConfig.ServiceName `
-        -SpoolDirectory $ScriptConfig.SpoolDirectory `
-        -TimeoutSeconds $ScriptConfig.TimeoutSeconds `
-        -LogDirectory $ScriptConfig.LogDirectory `
-        -LogFilePrefix $ScriptConfig.LogFilePrefix
+    Invoke-ClearPrintQueueLogged @ScriptConfig
 }
 catch {
-    Write-Error $_.Exception.Message
+    Write-Error -ErrorRecord $_
     exit 1
 }

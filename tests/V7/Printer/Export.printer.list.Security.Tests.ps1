@@ -18,8 +18,8 @@ Describe 'V7 printer export hardening' {
     }
 
     It 'restricts the export directory in code' {
-        $BasicContent = Get-Content -LiteralPath (Join-Path $global:SysadminMainRepoRoot 'PowerShell Script\V7\Printer\Export.printer.list.BASIC.ps1') -Raw
-        $FullContent = Get-Content -LiteralPath (Join-Path $global:SysadminMainRepoRoot 'PowerShell Script\V7\Printer\Export.printer.list.FULL.ps1') -Raw
+        $BasicContent = Get-Content -LiteralPath (Join-Path (Get-SysadminMainRepoRoot) 'PowerShell Script\V7\Printer\Export.printer.list.BASIC.ps1') -Raw
+        $FullContent = Get-Content -LiteralPath (Join-Path (Get-SysadminMainRepoRoot) 'PowerShell Script\V7\Printer\Export.printer.list.FULL.ps1') -Raw
 
         $BasicContent | Should -Match 'Resolve-SecureDirectory'
         $BasicContent | Should -Match 'Set-RestrictedDirectoryAcl'

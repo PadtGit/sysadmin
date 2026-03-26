@@ -50,6 +50,7 @@ function Test-IsReparsePoint {
 }
 
 function Set-RestrictedDirectoryAcl {
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path
@@ -85,7 +86,9 @@ function Set-RestrictedDirectoryAcl {
         [void]$Acl.AddAccessRule($Rule)
     }
 
-    Set-Acl -LiteralPath $Directory.FullName -AclObject $Acl
+    if ($PSCmdlet.ShouldProcess($Directory.FullName, 'Apply restricted directory ACL')) {
+        Set-Acl -LiteralPath $Directory.FullName -AclObject $Acl
+    }
 }
 
 function Resolve-SecureDirectory {
@@ -130,7 +133,7 @@ function Resolve-SecureDirectory {
     return $NormalizedPath
 }
 
-function New-UniqueChildPath {
+function Get-UniqueChildPath {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Directory,
@@ -168,7 +171,7 @@ function Invoke-BasicPrinterExport {
     )
 
     $SecureOutputDirectory = Resolve-SecureDirectory -Path $OutputDirectory -AllowedRoots @($StorageRoot)
-    $OutputPath = New-UniqueChildPath -Directory $SecureOutputDirectory -FileNamePrefix $OutputFileNamePrefix -Extension '.csv'
+    $OutputPath = Get-UniqueChildPath -Directory $SecureOutputDirectory -FileNamePrefix $OutputFileNamePrefix -Extension '.csv'
 
     try {
         $Printers = @(Get-Printer -ErrorAction Stop | Sort-Object -Property Name)

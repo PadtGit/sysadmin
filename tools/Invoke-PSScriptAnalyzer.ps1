@@ -468,12 +468,26 @@ function ConvertTo-Sarif {
         $Msg = if ($D.Message) { [string]$D.Message } else { [string]$D }
         $Uri = $null
         if ($D.ScriptName) {
-            $Full = (Resolve-Path -LiteralPath $D.ScriptName).Path
-            if ($Full.StartsWith($ProjectRoot)) {
-                $Uri = $Full.Substring($ProjectRoot.Length).TrimStart('\', '/').Replace('\', '/')
+            $Full = $null
+            try {
+                if (Test-Path -LiteralPath $D.ScriptName) {
+                    $Full = (Resolve-Path -LiteralPath $D.ScriptName -ErrorAction Stop).Path
+                }
+            }
+            catch {
+                $Full = $null
+            }
+
+            if ($Full) {
+                if ($Full.StartsWith($ProjectRoot)) {
+                    $Uri = $Full.Substring($ProjectRoot.Length).TrimStart('\', '/').Replace('\', '/')
+                }
+                else {
+                    $Uri = $Full.Replace('\', '/')
+                }
             }
             else {
-                $Uri = $Full.Replace('\', '/')
+                $Uri = ([string]$D.ScriptName).Replace('\', '/')
             }
         }
         $Region = @{}
@@ -617,7 +631,9 @@ if ($Settings) {
     if ($RecurseCustomRulePath) { $Settings.RecurseCustomRulePath = $true }
     if ($IncludeDefaultRules)   { $Settings.IncludeDefaultRules   = $true }
 
-    $CompatibilityRulesMissingTargetProfiles = Get-CompatibilityRulesMissingTargetProfiles -SettingsObject $Settings
+    $CompatibilityRulesMissingTargetProfiles = @(
+        Get-CompatibilityRulesMissingTargetProfiles -SettingsObject $Settings
+    )
     if ($CompatibilityRulesMissingTargetProfiles.Count -gt 0) {
         throw (
             "Compatibility rules enabled without TargetProfiles in '{0}': {1}. " +

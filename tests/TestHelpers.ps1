@@ -1,6 +1,13 @@
 Set-StrictMode -Version 3.0
 
-$global:SysadminMainRepoRoot = Split-Path -Path $PSScriptRoot -Parent
+$env:SYSADMIN_MAIN_REPO_ROOT = Split-Path -Path $PSScriptRoot -Parent
+
+function Global:Get-SysadminMainRepoRoot {
+    [CmdletBinding()]
+    param()
+
+    return $env:SYSADMIN_MAIN_REPO_ROOT
+}
 
 function Global:Import-ScriptModuleForTest {
     [CmdletBinding()]
@@ -11,7 +18,7 @@ function Global:Import-ScriptModuleForTest {
         [string]$ModuleName
     )
 
-    $ScriptPath = Join-Path -Path $global:SysadminMainRepoRoot -ChildPath $RelativeScriptPath
+    $ScriptPath = Join-Path -Path $env:SYSADMIN_MAIN_REPO_ROOT -ChildPath $RelativeScriptPath
     if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) {
         throw ('Script not found: {0}' -f $ScriptPath)
     }
@@ -64,7 +71,7 @@ function Global:Invoke-WhatIfScriptObject {
         [string]$RelativeScriptPath
     )
 
-    $ScriptPath = Join-Path -Path $global:SysadminMainRepoRoot -ChildPath $RelativeScriptPath
+    $ScriptPath = Join-Path -Path $env:SYSADMIN_MAIN_REPO_ROOT -ChildPath $RelativeScriptPath
     if (-not (Test-Path -LiteralPath $ScriptPath -PathType Leaf)) {
         throw ('Script not found: {0}' -f $ScriptPath)
     }
@@ -96,6 +103,7 @@ function Global:Invoke-WhatIfScriptObject {
             $Object = $JsonLine | ConvertFrom-Json
         }
         catch {
+            Write-Verbose ('Failed to parse WhatIf JSON output for {0}.' -f $ScriptPath)
         }
     }
 

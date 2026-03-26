@@ -54,6 +54,7 @@ function Test-IsReparsePoint {
 }
 
 function Set-RestrictedDirectoryAcl {
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path
@@ -89,7 +90,9 @@ function Set-RestrictedDirectoryAcl {
         [void]$Acl.AddAccessRule($Rule)
     }
 
-    Set-Acl -LiteralPath $Directory.FullName -AclObject $Acl
+    if ($PSCmdlet.ShouldProcess($Directory.FullName, 'Apply restricted directory ACL')) {
+        Set-Acl -LiteralPath $Directory.FullName -AclObject $Acl
+    }
 }
 
 function Resolve-SecureDirectory {

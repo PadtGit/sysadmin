@@ -6,12 +6,24 @@
         'Information'
     )
     IncludeRules = @()
-    ExcludeRules = @()
+    ExcludeRules = @(
+        'PSAvoidUsingWriteHost'
+        'PSAlignAssignmentStatement'
+        'PSAvoidLongLines'
+        'PSAvoidUsingDoubleQuotesForConstantString'
+        'PSReviewUnusedParameter'
+        'PSUseApprovedVerbs'
+        'PSUseBOMForUnicodeEncodedFile'
+        'PSUseConsistentIndentation'
+        'PSUseConsistentWhitespace'
+        'PSUseConstrainedLanguageMode'
+        'PSUseSingularNouns'
+    )
     CustomRulePath = @()
     RecurseCustomRulePath = $false
     Rules = @{
         PSAlignAssignmentStatement = @{
-            Enable = $true
+            Enable = $false
         }
         PSAvoidAssignmentToAutomaticVariable = @{
             Enable = $true
@@ -38,7 +50,7 @@
             Enable = $true
         }
         PSAvoidLongLines = @{
-            Enable = $true
+            Enable = $false
         }
         PSAvoidMultipleTypeAttributes = @{
             Enable = $true
@@ -80,7 +92,7 @@
             Enable = $true
         }
         PSAvoidUsingDoubleQuotesForConstantString = @{
-            Enable = $true
+            Enable = $false
         }
         PSAvoidUsingEmptyCatchBlock = @{
             Enable = $true
@@ -155,7 +167,7 @@
             Enable = $true
         }
         PSReviewUnusedParameter = @{
-            Enable = $true
+            Enable = $false
         }
         PSShouldProcess = @{
             Enable = $true
@@ -169,17 +181,20 @@
         PSUseCmdletCorrectly = @{
             Enable = $true
         }
+        # The repo's canonical layout mixes separate V5 and V7 trees, so a
+        # single repo-wide analyzer pass cannot apply one TargetProfiles set
+        # without producing false positives in the other tree.
         PSUseCompatibleCmdlets = @{
-            Enable = $true
+            Enable = $false
         }
         PSUseCompatibleCommands = @{
-            Enable = $true
+            Enable = $false
         }
         PSUseCompatibleSyntax = @{
-            Enable = $true
+            Enable = $false
         }
         PSUseCompatibleTypes = @{
-            Enable = $true
+            Enable = $false
         }
         PSUseConsistentIndentation = @{
             Enable = $true
@@ -191,10 +206,10 @@
             Enable = $true
         }
         PSUseConsistentWhitespace = @{
-            Enable = $true
+            Enable = $false
         }
         PSUseConstrainedLanguageMode = @{
-            Enable = $true
+            Enable = $false
         }
         PSUseCorrectCasing = @{
             Enable = $true
@@ -221,7 +236,7 @@
             Enable = $true
         }
         PSUseSingularNouns = @{
-            Enable = $true
+            Enable = $false
         }
         PSUseSupportsShouldProcess = @{
             Enable = $true

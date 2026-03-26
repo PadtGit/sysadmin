@@ -7,33 +7,119 @@ Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
 $LocalApplicationDataPath = [Environment]::GetFolderPath('LocalApplicationData')
+$RoamingAppDataPath = [Environment]::GetFolderPath('ApplicationData')
 
 $RequireAdmin = $true
-$IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-$CleanupSpecs = @(
-    @{
-        Path         = Join-Path -Path $LocalApplicationDataPath -ChildPath 'Temp'
-        AllowedRoots = @($LocalApplicationDataPath)
-    },
-    @{
-        Path         = Join-Path -Path $LocalApplicationDataPath -ChildPath 'D3DSCache'
-        AllowedRoots = @($LocalApplicationDataPath)
-    },
-    @{
-        Path         = Join-Path -Path $env:SystemRoot -ChildPath 'Temp'
-        AllowedRoots = @($env:SystemRoot)
-    },
-    @{
-        Path         = Join-Path -Path $env:SystemRoot -ChildPath 'SoftwareDistribution\DeliveryOptimization'
-        AllowedRoots = @(Join-Path -Path $env:SystemRoot -ChildPath 'SoftwareDistribution')
+$IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
+
+$FirefoxProfilesRoot = Join-Path $LocalApplicationDataPath 'Mozilla\Firefox\Profiles'
+$FirefoxCacheSpecs = @(
+    if (Test-Path -LiteralPath $FirefoxProfilesRoot -PathType Container) {
+        Get-ChildItem -LiteralPath $FirefoxProfilesRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) } |
+            ForEach-Object {
+                @{
+                    Path         = Join-Path $_.FullName 'cache2'
+                    AllowedRoots = @($LocalApplicationDataPath)
+                }
+            }
     }
 )
-$ThumbCacheDirectory = Join-Path -Path $LocalApplicationDataPath -ChildPath 'Microsoft\Windows\Explorer'
-$ThumbCacheFilter = 'thumbcache_*.db'
-$WindowsOldPath = Join-Path -Path $env:SystemDrive -ChildPath 'Windows.old'
-$RemoveWindowsOld = $false
-$RunComponentCleanup = $true
-$DismPath = Join-Path -Path $env:SystemRoot -ChildPath 'System32\Dism.exe'
+
+$NewTeamsPackageRoot = Join-Path $LocalApplicationDataPath 'Packages'
+$NewTeamsCacheSpecs = @(
+    if (Test-Path -LiteralPath $NewTeamsPackageRoot -PathType Container) {
+        Get-ChildItem -LiteralPath $NewTeamsPackageRoot -Directory -Filter 'MSTeams_*' -ErrorAction SilentlyContinue |
+            Where-Object { -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) } |
+            ForEach-Object {
+                @{
+                    Path         = Join-Path $_.FullName 'LocalCache\Microsoft\MSTeams'
+                    AllowedRoots = @($LocalApplicationDataPath)
+                }
+            }
+    }
+)
+
+$ScriptConfig = @{
+    CleanupSpecs = @(
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Temp'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'D3DSCache'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $env:SystemRoot 'Temp'
+            AllowedRoots = @($env:SystemRoot)
+        },
+        @{
+            Path         = Join-Path $env:SystemRoot 'SoftwareDistribution\DeliveryOptimization'
+            AllowedRoots = @(Join-Path $env:SystemRoot 'SoftwareDistribution')
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Google\Chrome\User Data\Default\Cache'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Google\Chrome\User Data\Default\Code Cache'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Google\Chrome\User Data\Default\GPUCache'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Microsoft\Edge\User Data\Default\Cache'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Microsoft\Edge\User Data\Default\Code Cache'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Microsoft\Edge\User Data\Default\GPUCache'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $RoamingAppDataPath 'Microsoft\Teams\Cache'
+            AllowedRoots = @($RoamingAppDataPath)
+        },
+        @{
+            Path         = Join-Path $RoamingAppDataPath 'Microsoft\Teams\blob_storage'
+            AllowedRoots = @($RoamingAppDataPath)
+        },
+        @{
+            Path         = Join-Path $RoamingAppDataPath 'Microsoft\Teams\databases'
+            AllowedRoots = @($RoamingAppDataPath)
+        },
+        @{
+            Path         = Join-Path $RoamingAppDataPath 'Microsoft\Teams\GPUCache'
+            AllowedRoots = @($RoamingAppDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Microsoft\Windows\WER\ReportArchive'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'Microsoft\Windows\WER\ReportQueue'
+            AllowedRoots = @($LocalApplicationDataPath)
+        },
+        @{
+            Path         = Join-Path $LocalApplicationDataPath 'CrashDumps'
+            AllowedRoots = @($LocalApplicationDataPath)
+        }
+    ) + $FirefoxCacheSpecs + $NewTeamsCacheSpecs
+    ThumbCacheDirectory = Join-Path $LocalApplicationDataPath 'Microsoft\Windows\Explorer'
+    ThumbCacheFilter    = 'thumbcache_*.db'
+    WindowsOldPath      = Join-Path $env:SystemDrive 'Windows.old'
+    RemoveWindowsOld    = $false
+    RunComponentCleanup = $true
+    DismPath            = Join-Path $env:SystemRoot 'System32\Dism.exe'
+}
 
 function Test-PathWithinAllowedRoot {
     param(
@@ -87,7 +173,8 @@ function Resolve-TrustedDirectoryPath {
     }
 
     foreach ($AllowedRoot in $AllowedRoots) {
-        if ([string]::IsNullOrWhiteSpace($AllowedRoot) -or -not (Test-Path -LiteralPath $AllowedRoot -PathType Container)) {
+        if ([string]::IsNullOrWhiteSpace($AllowedRoot) -or
+            -not (Test-Path -LiteralPath $AllowedRoot -PathType Container)) {
             continue
         }
 
@@ -147,6 +234,9 @@ function Invoke-AdvancedWindowsCleanup {
         [string]$ThumbCacheFilter,
 
         [Parameter(Mandatory = $true)]
+        [string]$LocalApplicationDataPath,
+
+        [Parameter(Mandatory = $true)]
         [string]$WindowsOldPath,
 
         [Parameter(Mandatory = $true)]
@@ -164,14 +254,18 @@ function Invoke-AdvancedWindowsCleanup {
     }
 
     if ($WhatIfPreference -and -not $IsAdministrator) {
-            return [pscustomobject]@{
-                CleanupPathCount = $CleanupSpecs.Count
-                RemovedCount     = 0
-                RemoveWindowsOld = $RemoveWindowsOld
-                ComponentCleanup = $RunComponentCleanup
+        return [pscustomobject]@{
+            CleanupPathCount = $CleanupSpecs.Count
+            RemovedCount     = 0
+            RemoveWindowsOld = $RemoveWindowsOld
+            ComponentCleanup = $RunComponentCleanup
             Status           = 'Skipped'
             Reason           = 'AdminPreviewRequired'
         }
+    }
+
+    if ($RunComponentCleanup -and -not (Test-Path -LiteralPath $DismPath -PathType Leaf)) {
+        throw ('DISM not found at: {0}' -f $DismPath)
     }
 
     $RemovedCount = 0
@@ -183,12 +277,15 @@ function Invoke-AdvancedWindowsCleanup {
             continue
         }
 
-        $CleanupItems = Get-SafeChildItems -Path $CleanupPath
-
-        foreach ($CleanupItem in $CleanupItems) {
+        foreach ($CleanupItem in (Get-SafeChildItems -Path $CleanupPath)) {
             if ($PSCmdlet.ShouldProcess($CleanupItem.FullName, 'Remove item')) {
-                Remove-Item -LiteralPath $CleanupItem.FullName -Recurse -Force -ErrorAction SilentlyContinue
-                $RemovedCount++
+                try {
+                    Remove-Item -LiteralPath $CleanupItem.FullName -Recurse -Force -ErrorAction Stop
+                    $RemovedCount++
+                }
+                catch {
+                    Write-Verbose ('Failed to remove cleanup item: {0}' -f $CleanupItem.FullName)
+                }
             }
         }
     }
@@ -197,11 +294,11 @@ function Invoke-AdvancedWindowsCleanup {
         Clear-RecycleBin -Force -ErrorAction SilentlyContinue
     }
 
-    $TrustedThumbCacheDirectory = Resolve-TrustedDirectoryPath -Path $ThumbCacheDirectory -AllowedRoots @($LocalApplicationDataPath)
-    if (-not [string]::IsNullOrWhiteSpace($TrustedThumbCacheDirectory)) {
+    $TrustedThumbDirectory = Resolve-TrustedDirectoryPath -Path $ThumbCacheDirectory -AllowedRoots @($LocalApplicationDataPath)
+    if (-not [string]::IsNullOrWhiteSpace($TrustedThumbDirectory)) {
         try {
             $ThumbCacheFiles = @(
-                Get-ChildItem -LiteralPath $TrustedThumbCacheDirectory -File -Filter $ThumbCacheFilter -ErrorAction Stop |
+                Get-ChildItem -LiteralPath $TrustedThumbDirectory -File -Filter $ThumbCacheFilter -ErrorAction Stop |
                     Where-Object { -not (Test-IsReparsePoint -Item $_) }
             )
         }
@@ -211,25 +308,30 @@ function Invoke-AdvancedWindowsCleanup {
 
         foreach ($ThumbCacheFile in $ThumbCacheFiles) {
             if ($PSCmdlet.ShouldProcess($ThumbCacheFile.FullName, 'Remove thumb cache')) {
-                Remove-Item -LiteralPath $ThumbCacheFile.FullName -Force -ErrorAction SilentlyContinue
-                $RemovedCount++
+                try {
+                    Remove-Item -LiteralPath $ThumbCacheFile.FullName -Force -ErrorAction Stop
+                    $RemovedCount++
+                }
+                catch {
+                    Write-Verbose ('Failed to remove thumb cache item: {0}' -f $ThumbCacheFile.FullName)
+                }
             }
         }
     }
 
-    $TrustedWindowsOldPath = Resolve-TrustedDirectoryPath -Path $WindowsOldPath -AllowedRoots @($env:SystemDrive)
-    if ($RemoveWindowsOld -and -not [string]::IsNullOrWhiteSpace($TrustedWindowsOldPath)) {
-        if ($PSCmdlet.ShouldProcess($TrustedWindowsOldPath, 'Remove directory')) {
+    if ($RemoveWindowsOld) {
+        $TrustedWindowsOldPath = Resolve-TrustedDirectoryPath -Path $WindowsOldPath -AllowedRoots @($env:SystemDrive + '\')
+        if (-not [string]::IsNullOrWhiteSpace($TrustedWindowsOldPath) -and
+            $PSCmdlet.ShouldProcess($TrustedWindowsOldPath, 'Remove directory')) {
             Remove-Item -LiteralPath $TrustedWindowsOldPath -Recurse -Force -ErrorAction Stop
             $RemovedCount++
         }
     }
 
     if ($RunComponentCleanup -and $PSCmdlet.ShouldProcess('Windows component store', 'Run DISM cleanup')) {
-        & $DismPath /Online /Cleanup-Image /StartComponentCleanup | Out-Null
-
+        $DismOutput = & $DismPath /Online /Cleanup-Image /StartComponentCleanup 2>&1
         if ($LASTEXITCODE -ne 0) {
-            throw 'DISM cleanup failed.'
+            throw ('DISM cleanup failed (exit {0}): {1}' -f $LASTEXITCODE, ($DismOutput -join ' '))
         }
     }
 
@@ -237,7 +339,7 @@ function Invoke-AdvancedWindowsCleanup {
         $Status = 'WhatIf'
     }
 
-        [pscustomobject]@{
+    [pscustomobject]@{
         CleanupPathCount = $CleanupSpecs.Count
         RemovedCount     = $RemovedCount
         RemoveWindowsOld = $RemoveWindowsOld
@@ -251,15 +353,16 @@ try {
     Invoke-AdvancedWindowsCleanup `
         -RequireAdmin $RequireAdmin `
         -IsAdministrator $IsAdministrator `
-        -CleanupSpecs $CleanupSpecs `
-        -ThumbCacheDirectory $ThumbCacheDirectory `
-        -ThumbCacheFilter $ThumbCacheFilter `
-        -WindowsOldPath $WindowsOldPath `
-        -RemoveWindowsOld $RemoveWindowsOld `
-        -RunComponentCleanup $RunComponentCleanup `
-        -DismPath $DismPath
+        -CleanupSpecs $ScriptConfig.CleanupSpecs `
+        -ThumbCacheDirectory $ScriptConfig.ThumbCacheDirectory `
+        -ThumbCacheFilter $ScriptConfig.ThumbCacheFilter `
+        -LocalApplicationDataPath $LocalApplicationDataPath `
+        -WindowsOldPath $ScriptConfig.WindowsOldPath `
+        -RemoveWindowsOld $ScriptConfig.RemoveWindowsOld `
+        -RunComponentCleanup $ScriptConfig.RunComponentCleanup `
+        -DismPath $ScriptConfig.DismPath
 }
 catch {
-    Write-Error $_.Exception.Message
+    Write-Error -ErrorRecord $_
     exit 1
 }
