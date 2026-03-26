@@ -13,7 +13,7 @@ Run, in order when requested:
 2. The CI-style Pester configuration that writes to artifacts/validation/pester-results.xml.
 3. The trusted local WhatIf smoke checks from AGENTS.md.
 4. A sandbox sanity check that confirms sandbox/sysadmin-main-validation.wsb and the current docs agree on mapped paths, read-only mode, networking, vGPU, and startup location.
-5. gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin --ref Powershell.5, then watch the latest run to completion.
+5. gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin, then watch the latest run to completion.
 If any local validation step fails, report the blocker and stop before dispatching GitHub unless the parent agent explicitly asks you to continue.
 Summarize command results, artifact paths, run IDs, and failures concisely.
 """
