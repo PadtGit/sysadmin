@@ -2,6 +2,8 @@
 
 This changelog captures weekly repo-level highlights from landed git history and supporting docs.
 
+> Branch note: `Powershell.5` is the single-runtime Windows PowerShell 5.1 branch. Historical entries below may reference the pre-split mirrored V5/V7 layout from `main`.
+
 ## Week of March 23-29, 2026
 
 ### Highlights
