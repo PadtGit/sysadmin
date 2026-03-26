@@ -4,6 +4,12 @@ Describe 'V7 logged spool cleanup behavior' {
 
     BeforeAll {
         . (Resolve-Path (Join-Path $PSScriptRoot '..\TestHelpers.ps1')).Path
+        try {
+            Add-Type -AssemblyName 'System.ServiceProcess' -ErrorAction Stop
+        }
+        catch {
+            Add-Type -AssemblyName 'System.ServiceProcess.ServiceController' -ErrorAction Stop
+        }
         $script:ModuleInfo = Import-ScriptModuleForTest -RelativeScriptPath 'PowerShell Script\Printer\restart.SpoolDeleteQV4.ps1'
     }
 
