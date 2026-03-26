@@ -35,6 +35,29 @@ $ScriptConfig = @{
     RebootDelaySeconds = 5
 }
 
+function Test-IsWindowsSandboxSession {
+    [CmdletBinding()]
+    param()
+
+    if ([Environment]::UserName -eq 'WDAGUtilityAccount') {
+        return $true
+    }
+
+    try {
+        $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        if ($null -ne $currentIdentity -and $currentIdentity.Name -match '(^|\\)WDAGUtilityAccount$') {
+            return $true
+        }
+    }
+    catch {
+        return $false
+    }
+
+    return $false
+}
+
+$IsWindowsSandbox = Test-IsWindowsSandboxSession
+
 function Invoke-ResetNetworkAndReboot {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -43,6 +66,9 @@ function Invoke-ResetNetworkAndReboot {
 
         [Parameter(Mandatory = $true)]
         [bool]$IsAdministrator,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$IsWindowsSandbox,
 
         [Parameter(Mandatory = $true)]
         [object[]]$Commands,
@@ -56,6 +82,16 @@ function Invoke-ResetNetworkAndReboot {
 
     if ($RequireAdmin -and -not $WhatIfPreference -and -not $IsAdministrator) {
         throw 'Run this script in an elevated PowerShell 7 session.'
+    }
+
+    if ($IsWindowsSandbox -and -not $WhatIfPreference) {
+        return [pscustomobject]@{
+            CommandCount       = $Commands.Count
+            ExecutedCount      = 0
+            RebootDelaySeconds = $RebootDelaySeconds
+            Status             = 'Skipped'
+            Reason             = 'NetworkResetUnsupportedInWindowsSandbox'
+        }
     }
 
     $ExecutedCount = 0
@@ -96,6 +132,7 @@ try {
     Invoke-ResetNetworkAndReboot `
         -RequireAdmin $RequireAdmin `
         -IsAdministrator $IsAdministrator `
+        -IsWindowsSandbox $IsWindowsSandbox `
         -Commands $ScriptConfig.Commands `
         -ShutdownPath $ScriptConfig.ShutdownPath `
         -RebootDelaySeconds $ScriptConfig.RebootDelaySeconds

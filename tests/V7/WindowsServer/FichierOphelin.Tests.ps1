@@ -151,4 +151,46 @@ Describe 'V7 installer orphan cleanup behavior' {
             renamedDestinationPath  = 'C:\ProgramData\sysadmin-main\Quarantine\InstallerOrphans\orphan_20250102030405678.msi'
         }
     }
+
+    It 'returns a skipped result without creating quarantine when no installer references exist' {
+        $moduleName = $script:ModuleInfo.ModuleName
+
+        InModuleScope $moduleName {
+            param($installerPath, $backupFolder, $storageRoot, $registryRoot)
+
+            $script:ScriptConfig = @{
+                StorageRoot = $storageRoot
+            }
+
+            $installerDirectory = [System.IO.DirectoryInfo]::new($installerPath)
+
+            Mock Test-Path { $LiteralPath -eq $installerPath }
+            Mock Get-Item { $installerDirectory } -ParameterFilter { $LiteralPath -eq $installerPath }
+            Mock Get-ChildItem { @() } -ParameterFilter { $Path -eq $registryRoot -and $Recurse }
+            Mock Test-IsReparsePoint { $false }
+            Mock Resolve-SecureDirectory { $Path }
+            Mock Move-Item {}
+
+            $result = Invoke-InstallerOrphanMove `
+                -RequireAdmin $false `
+                -IsAdministrator $false `
+                -InstallerPath $installerPath `
+                -BackupFolder $backupFolder `
+                -RegistryRoot $registryRoot `
+                -AllowedExtensions @('.msi', '.msp')
+
+            $result.Status | Should -Be 'Skipped'
+            $result.Reason | Should -Be 'NoReferencesFound'
+            $result.OrphanCount | Should -Be 0
+            $result.MovedCount | Should -Be 0
+
+            Assert-MockCalled Resolve-SecureDirectory -Times 0 -Exactly -Scope It
+            Assert-MockCalled Move-Item -Times 0 -Exactly -Scope It
+        } -Parameters @{
+            installerPath = 'C:\TestData\Installer'
+            backupFolder  = 'C:\ProgramData\sysadmin-main\Quarantine\InstallerOrphans'
+            storageRoot   = 'C:\ProgramData\sysadmin-main'
+            registryRoot  = 'HKLM:\Software\Test'
+        }
+    }
 }

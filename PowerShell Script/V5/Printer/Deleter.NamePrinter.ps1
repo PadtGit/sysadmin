@@ -28,17 +28,13 @@ function Invoke-NamedPrinterRemoval {
     }
 
     if ([string]::IsNullOrWhiteSpace($NamePattern) -or $NamePattern -eq '*NAMEPRINTER*') {
-        if ($WhatIfPreference) {
-            return [pscustomobject]@{
-                NamePattern  = $NamePattern
-                PrinterCount = 0
-                RemovedCount = 0
-                Status       = 'Skipped'
-                Reason       = 'NamePatternNotConfigured'
-            }
+        return [pscustomobject]@{
+            NamePattern  = $NamePattern
+            PrinterCount = 0
+            RemovedCount = 0
+            Status       = 'Skipped'
+            Reason       = 'NamePatternNotConfigured'
         }
-
-        throw 'Configure NamePattern before running the script.'
     }
 
     try {

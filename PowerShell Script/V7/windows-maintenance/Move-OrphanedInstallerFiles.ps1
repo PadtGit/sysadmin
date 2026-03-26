@@ -177,8 +177,6 @@ function Invoke-MoveOrphanedInstallerFiles {
         throw ('Installer path must not be a reparse point: {0}' -f $installerDirectory.FullName)
     }
 
-    $secureBackupPath = Resolve-SecureDirectory -Path $BackupPath -AllowedRoots @($ScriptConfig.StorageRoot)
-
     $references = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $installer = $null
     $movedCount = 0
@@ -260,20 +258,18 @@ function Invoke-MoveOrphanedInstallerFiles {
     }
 
     if ($references.Count -eq 0) {
-        if ($WhatIfPreference) {
-            return [pscustomobject]@{
-                InstallerPath = $InstallerPath
-                BackupPath    = $BackupPath
-                FileCount     = 0
-                OrphanCount   = 0
-                MovedCount    = 0
-                Status        = 'Skipped'
-                Reason        = 'NoReferencesFound'
-            }
+        return [pscustomobject]@{
+            InstallerPath = $InstallerPath
+            BackupPath    = $BackupPath
+            FileCount     = 0
+            OrphanCount   = 0
+            MovedCount    = 0
+            Status        = 'Skipped'
+            Reason        = 'NoReferencesFound'
         }
-
-        throw 'No Windows Installer references were found. Aborting.'
     }
+
+    $secureBackupPath = Resolve-SecureDirectory -Path $BackupPath -AllowedRoots @($ScriptConfig.StorageRoot)
 
     $installerFiles = @(
         Get-ChildItem -LiteralPath $InstallerPath -File -ErrorAction Stop |

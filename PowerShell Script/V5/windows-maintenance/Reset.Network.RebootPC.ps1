@@ -20,6 +20,29 @@ $Commands = @(
 )
 $RebootDelaySeconds = 5
 
+function Test-IsWindowsSandboxSession {
+    [CmdletBinding()]
+    param()
+
+    if ([Environment]::UserName -eq 'WDAGUtilityAccount') {
+        return $true
+    }
+
+    try {
+        $CurrentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        if ($null -ne $CurrentIdentity -and $CurrentIdentity.Name -match '(^|\\)WDAGUtilityAccount$') {
+            return $true
+        }
+    }
+    catch {
+        return $false
+    }
+
+    return $false
+}
+
+$IsWindowsSandbox = Test-IsWindowsSandboxSession
+
 function Invoke-NetworkReset {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -28,6 +51,9 @@ function Invoke-NetworkReset {
 
         [Parameter(Mandatory = $true)]
         [bool]$IsAdministrator,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$IsWindowsSandbox,
 
         [Parameter(Mandatory = $true)]
         [object[]]$Commands,
@@ -41,6 +67,16 @@ function Invoke-NetworkReset {
 
     if ($RequireAdmin -and -not $WhatIfPreference -and -not $IsAdministrator) {
         throw 'Run this script in an elevated PowerShell 5.1 session.'
+    }
+
+    if ($IsWindowsSandbox -and -not $WhatIfPreference) {
+        return [pscustomobject]@{
+            CommandCount       = $Commands.Count
+            ExecutedCount      = 0
+            RebootDelaySeconds = $RebootDelaySeconds
+            Status             = 'Skipped'
+            Reason             = 'NetworkResetUnsupportedInWindowsSandbox'
+        }
     }
 
     $ExecutedCount = 0
@@ -73,6 +109,7 @@ function Invoke-NetworkReset {
         ExecutedCount       = $ExecutedCount
         RebootDelaySeconds  = $RebootDelaySeconds
         Status              = $Status
+        Reason              = ''
     }
 }
 
@@ -80,6 +117,7 @@ try {
     Invoke-NetworkReset `
         -RequireAdmin $RequireAdmin `
         -IsAdministrator $IsAdministrator `
+        -IsWindowsSandbox $IsWindowsSandbox `
         -Commands $Commands `
         -ShutdownPath $ShutdownPath `
         -RebootDelaySeconds $RebootDelaySeconds

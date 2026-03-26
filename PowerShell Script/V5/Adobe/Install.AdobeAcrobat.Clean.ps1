@@ -239,19 +239,15 @@ function Invoke-AdobeAcrobatRefresh {
     }
 
     if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
-        if ($WhatIfPreference) {
-            return [pscustomobject]@{
-                PackagePath         = $PackagePath
-                RemovedProductCount = 0
-                RemovedProducts     = ''
-                RestartRequired     = $false
-                LogDirectory        = $LogDirectory
-                Status              = 'Skipped'
-                Reason              = 'PackagePathNotFound'
-            }
+        return [pscustomobject]@{
+            PackagePath         = $PackagePath
+            RemovedProductCount = 0
+            RemovedProducts     = ''
+            RestartRequired     = $false
+            LogDirectory        = $LogDirectory
+            Status              = 'Skipped'
+            Reason              = 'PackagePathNotFound'
         }
-
-        throw ('Package not found: {0}' -f $PackagePath)
     }
 
     if (-not (Test-Path -LiteralPath $MsiexecPath -PathType Leaf)) {

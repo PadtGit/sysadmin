@@ -97,4 +97,39 @@ Describe 'V5 Adobe Acrobat refresh behavior' {
             msiexecPath  = 'C:\Windows\System32\msiexec.exe'
         }
     }
+
+    It 'returns a skipped result when the package path is missing during a real run' {
+        $moduleName = $script:ModuleInfo.ModuleName
+
+        InModuleScope $moduleName {
+            param($packagePath, $logDirectory, $msiexecPath)
+
+            Mock Resolve-SecureDirectory { $Path }
+            Mock Start-Process {}
+
+            $result = Invoke-AdobeAcrobatRefresh `
+                -RequireAdmin $false `
+                -IsAdministrator $false `
+                -PackagePath $packagePath `
+                -PackageArguments '' `
+                -LogDirectory $logDirectory `
+                -TrustedPublisherPatterns @('Adobe*') `
+                -MsiexecPath $msiexecPath `
+                -ProductNamePatterns @('Adobe Acrobat*') `
+                -RegistryPaths @('HKLM:\Software\Test\*') `
+                -ProcessNames @('Acrobat') `
+                -SuccessExitCodes @(0, 1641, 3010)
+
+            $result.PackagePath | Should -Be $packagePath
+            $result.Status | Should -Be 'Skipped'
+            $result.Reason | Should -Be 'PackagePathNotFound'
+
+            Assert-MockCalled Resolve-SecureDirectory -Times 0 -Exactly -Scope It
+            Assert-MockCalled Start-Process -Times 0 -Exactly -Scope It
+        } -Parameters @{
+            packagePath  = 'C:\Install\Adobe\MissingInstaller.msi'
+            logDirectory = 'C:\ProgramData\sysadmin-main\Logs\AdobeAcrobat'
+            msiexecPath  = 'C:\Windows\System32\msiexec.exe'
+        }
+    }
 }

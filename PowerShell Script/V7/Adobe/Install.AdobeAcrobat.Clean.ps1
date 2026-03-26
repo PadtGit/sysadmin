@@ -204,6 +204,7 @@ function Invoke-RefreshAdobeAcrobat {
         [string]$PackagePath,
 
         [Parameter(Mandatory)]
+        [AllowEmptyString()]
         [string]$PackageArguments,
 
         [Parameter(Mandatory)]
@@ -229,7 +230,15 @@ function Invoke-RefreshAdobeAcrobat {
     )
 
     if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
-        throw 'Update $ScriptConfig.PackagePath before running the script.'
+        return [pscustomobject]@{
+            RemovedProductCount = 0
+            RemovedProducts     = ''
+            InstalledPackage    = $PackagePath
+            RestartRequired     = $false
+            LogDirectory        = $LogDirectory
+            Status              = 'Skipped'
+            Reason              = 'PackagePathNotFound'
+        }
     }
 
     if (-not (Test-Path -LiteralPath $MsiexecPath -PathType Leaf)) {

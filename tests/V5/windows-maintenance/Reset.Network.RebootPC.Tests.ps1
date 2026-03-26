@@ -1,10 +1,10 @@
 . (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
 
-Describe 'V7 network reset and reboot behavior' {
+Describe 'V5 network reset and reboot behavior' {
 
     BeforeAll {
         . (Resolve-Path (Join-Path $PSScriptRoot '..\..\TestHelpers.ps1')).Path
-        $script:ModuleInfo = Import-ScriptModuleForTest -RelativeScriptPath 'PowerShell Script\V7\windows-maintenance\Reset.Network.RebootPC.ps1'
+        $script:ModuleInfo = Import-ScriptModuleForTest -RelativeScriptPath 'PowerShell Script\V5\windows-maintenance\Reset.Network.RebootPC.ps1'
     }
 
     AfterAll {
@@ -14,7 +14,7 @@ Describe 'V7 network reset and reboot behavior' {
     }
 
     It 'returns a preview-safe WhatIf summary' {
-        $Result = Invoke-WhatIfScriptObject -Shell pwsh -RelativeScriptPath 'PowerShell Script\V7\windows-maintenance\Reset.Network.RebootPC.ps1'
+        $Result = Invoke-WhatIfScriptObject -Shell powershell -RelativeScriptPath 'PowerShell Script\V5\windows-maintenance\Reset.Network.RebootPC.ps1'
 
         $Result.Object | Should -Not -BeNullOrEmpty
         $Result.Object.CommandCount | Should -Be 5
@@ -27,7 +27,7 @@ Describe 'V7 network reset and reboot behavior' {
         $moduleName = $script:ModuleInfo.ModuleName
 
         InModuleScope $moduleName {
-            $result = Invoke-ResetNetworkAndReboot `
+            $result = Invoke-NetworkReset `
                 -RequireAdmin $false `
                 -IsAdministrator $false `
                 -IsWindowsSandbox $true `

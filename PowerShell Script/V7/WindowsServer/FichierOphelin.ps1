@@ -177,8 +177,6 @@ function Invoke-InstallerOrphanMove {
         throw ('Installer path must not be a reparse point: {0}' -f $InstallerDirectory.FullName)
     }
 
-    $SecureBackupFolder = Resolve-SecureDirectory -Path $BackupFolder -AllowedRoots @($ScriptConfig.StorageRoot)
-
     $KnownPackages = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $MovedCount = 0
     $OrphanCount = 0
@@ -198,20 +196,18 @@ function Invoke-InstallerOrphanMove {
     }
 
     if ($KnownPackages.Count -eq 0) {
-        if ($WhatIfPreference) {
-            return [pscustomobject]@{
-                InstallerPath = $InstallerPath
-                BackupFolder  = $BackupFolder
-                FileCount     = 0
-                OrphanCount   = 0
-                MovedCount    = 0
-                Status        = 'Skipped'
-                Reason        = 'NoReferencesFound'
-            }
+        return [pscustomobject]@{
+            InstallerPath = $InstallerPath
+            BackupFolder  = $BackupFolder
+            FileCount     = 0
+            OrphanCount   = 0
+            MovedCount    = 0
+            Status        = 'Skipped'
+            Reason        = 'NoReferencesFound'
         }
-
-        throw 'No installer references were found.'
     }
+
+    $SecureBackupFolder = Resolve-SecureDirectory -Path $BackupFolder -AllowedRoots @($ScriptConfig.StorageRoot)
 
     $InstallerFiles = @(
         Get-ChildItem -LiteralPath $InstallerPath -File -ErrorAction Stop |

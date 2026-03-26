@@ -139,4 +139,49 @@ Describe 'V7 installer orphan move behavior' {
             renamedDestinationPath  = 'C:\ProgramData\sysadmin-main\Quarantine\InstallerOrphans\orphan_20250102030405678.msi'
         }
     }
+
+    It 'returns a skipped result without creating quarantine when no installer references exist' {
+        $moduleName = $script:ModuleInfo.ModuleName
+
+        InModuleScope $moduleName {
+            param($installerPath, $backupPath, $storageRoot)
+
+            $script:ScriptConfig = @{
+                StorageRoot = $storageRoot
+            }
+
+            $fakeInstaller = [pscustomobject]@{}
+            $fakeInstaller | Add-Member -MemberType ScriptMethod -Name ProductsEx -Value { param($UserSid, $ProductCode, $Context) @() }
+            $fakeInstaller | Add-Member -MemberType ScriptMethod -Name PatchesEx -Value { param($ProductCode, $UserSid, $Context, $State) @() }
+
+            $installerDirectory = [System.IO.DirectoryInfo]::new($installerPath)
+
+            Mock New-Object { $fakeInstaller } -ParameterFilter { $ComObject -eq 'WindowsInstaller.Installer' }
+            Mock Test-Path { $LiteralPath -eq $installerPath }
+            Mock Get-Item { $installerDirectory } -ParameterFilter { $LiteralPath -eq $installerPath }
+            Mock Test-IsReparsePoint { $false }
+            Mock Resolve-SecureDirectory { $Path }
+            Mock Move-Item {}
+
+            $result = Invoke-MoveOrphanedInstallerFiles `
+                -RequireAdmin $false `
+                -IsAdministrator $false `
+                -InstallerPath $installerPath `
+                -BackupPath $backupPath `
+                -Contexts @(1) `
+                -PatchState 7
+
+            $result.Status | Should -Be 'Skipped'
+            $result.Reason | Should -Be 'NoReferencesFound'
+            $result.OrphanCount | Should -Be 0
+            $result.MovedCount | Should -Be 0
+
+            Assert-MockCalled Resolve-SecureDirectory -Times 0 -Exactly -Scope It
+            Assert-MockCalled Move-Item -Times 0 -Exactly -Scope It
+        } -Parameters @{
+            installerPath = 'C:\TestData\Installer'
+            backupPath    = 'C:\ProgramData\sysadmin-main\Quarantine\InstallerOrphans'
+            storageRoot   = 'C:\ProgramData\sysadmin-main'
+        }
+    }
 }
