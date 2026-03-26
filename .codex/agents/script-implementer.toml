@@ -9,7 +9,7 @@ Own small, targeted code changes once the task is understood.
 Read AGENTS.md before editing files.
 You are not alone in the codebase. Preserve unrelated user edits and never revert changes you did not make.
 Treat PowerShell Script/* as canonical.
-Update PowerShell Script/V7 first, then adapt PowerShell Script/V5 only where compatibility or parity requires it.
+
 For workflow-only tasks, keep AGENTS.md, docs/*, .codex/agents/*.toml, .agents/skills/*, and .github/workflows/* aligned in the same patch unless a narrower specialist owns that surface.
 Preserve truthful #Requires declarations, SupportsShouldProcess behavior, Set-StrictMode, ErrorActionPreference, admin gating, and current result-object shape unless the task explicitly changes them.
 Prefer the smallest defensible patch and run focused validation for the scripts you changed.

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -12,7 +12,7 @@
     GitHub Advanced Security, Azure DevOps, and OpenAI Codex workflows).
 
     Safe on both Windows and Linux CI runners (PowerShell 5.1 and 7.x).
-    Path separators are normalised via Join-Path — no hardcoded \ or /.
+    Path separators are normalised via Join-Path - no hardcoded \ or /.
 
 .PARAMETER Path
     One or more paths to analyse. Accepts .ps1/.psm1/.psd1 files or
@@ -27,16 +27,16 @@
     Scan directories recursively.
 
 .PARAMETER IncludePath
-    Wildcard filter — only files whose full path matches are analysed.
+    Wildcard filter - only files whose full path matches are analysed.
 
 .PARAMETER ExcludePath
-    Wildcard filter — files whose full path matches are skipped.
+    Wildcard filter - files whose full path matches are skipped.
 
 .PARAMETER IncludeRule
-    Runtime rule whitelist — overrides settings at invocation time.
+    Runtime rule whitelist - overrides settings at invocation time.
 
 .PARAMETER ExcludeRule
-    Runtime rule blacklist — overrides settings at invocation time.
+    Runtime rule blacklist - overrides settings at invocation time.
 
 .PARAMETER CustomRulePath
     One or more paths to custom PSScriptAnalyzer rule modules.
@@ -76,7 +76,7 @@
     Required PSScriptAnalyzer module version. Default: 1.25.0.
 
 .PARAMETER PSScriptAnalyzerModulePath
-    Explicit path to PSScriptAnalyzer module — use for pinned/offline installs.
+    Explicit path to PSScriptAnalyzer module - use for pinned/offline installs.
 
 .EXAMPLE
     .\Invoke-PSScriptAnalyzer.ps1
@@ -85,7 +85,7 @@
     .\Invoke-PSScriptAnalyzer.ps1 -Recurse -EnableExit -ExitCodeMode AnyError
 
 .EXAMPLE
-    .\Invoke-PSScriptAnalyzer.ps1 -Path 'PowerShell Script/V5','PowerShell Script/V7' -EnableExit
+    .\Invoke-PSScriptAnalyzer.ps1 -Path 'PowerShell Script' -EnableExit
 #>
 
 [CmdletBinding()]
@@ -198,11 +198,11 @@ function Get-AnalyzerFailureDiagnostic {
 }
 
 # ---------------------------------------------------------------------------
-# Resolve script root — guard against empty $PSScriptRoot (piped/stdin invoke)
+# Resolve script root - guard against empty $PSScriptRoot (piped/stdin invoke)
 # ---------------------------------------------------------------------------
 if ([string]::IsNullOrWhiteSpace($PSScriptRoot)) {
     $ScriptRoot = $PWD.Path
-    Write-Warning '$PSScriptRoot is empty — using current working directory as script root.'
+    Write-Warning '$PSScriptRoot is empty - using current working directory as script root.'
 }
 else {
     $ScriptRoot = $PSScriptRoot
@@ -211,7 +211,7 @@ else {
 $RepoRoot = Split-Path -Path $ScriptRoot -Parent
 
 # ---------------------------------------------------------------------------
-# Default output paths — cross-platform via chained Join-Path
+# Default output paths - cross-platform via chained Join-Path
 # ---------------------------------------------------------------------------
 if ([string]::IsNullOrWhiteSpace($SettingsPath)) {
     $SettingsPath = Join-Path -Path $ScriptRoot -ChildPath 'PSScriptAnalyzerSettings.psd1'
@@ -244,7 +244,7 @@ foreach ($OutPath in @($OutTxtPath, $OutJsonPath, $OutSarifPath)) {
 }
 
 # ---------------------------------------------------------------------------
-# AST-based settings parser — safe across PS editions, no execution required
+# AST-based settings parser - safe across PS editions, no execution required
 # ---------------------------------------------------------------------------
 function ConvertFrom-AstLiteral {
     param(
@@ -306,9 +306,9 @@ function Read-AnalyzerSettings {
     $Ast = [System.Management.Automation.Language.Parser]::ParseFile(
         $FilePath, [ref]$Tokens, [ref]$Errors
     )
-    if ($Errors.Count -gt 0) {
+    if (@($Errors).Count -gt 0) {
         $First = $Errors | Select-Object -First 1
-        throw "Settings parse error at $($First.Extent.StartLineNumber):$($First.Extent.StartColumnNumber) — $($First.Message)"
+        throw "Settings parse error at $($First.Extent.StartLineNumber):$($First.Extent.StartColumnNumber) - $($First.Message)"
     }
     $HashAst = $Ast.Find(
         { param($Node) $Node -is [System.Management.Automation.Language.HashtableAst] },
@@ -400,7 +400,7 @@ function Get-CompatibilityRulesMissingTargetProfiles {
             )
         }
 
-        if ($IsEnabled -and $TargetProfiles.Count -eq 0) {
+        if ($IsEnabled -and @($TargetProfiles).Count -eq 0) {
             $MissingRules.Add($RuleName)
         }
     }
@@ -425,7 +425,7 @@ function Import-AnalyzerModule {
             Sort-Object Version -Descending |
             Select-Object -First 1
         if ($ImportedModule.Version -ne $RequiredVersion) {
-            throw "PSScriptAnalyzer $($ImportedModule.Version) loaded from module path — required version is $RequiredVersion."
+            throw "PSScriptAnalyzer $($ImportedModule.Version) loaded from module path - required version is $RequiredVersion."
         }
         return
     }
@@ -522,7 +522,7 @@ function ConvertTo-Sarif {
         }
         if ($Uri) {
             $Phys = [ordered]@{ artifactLocation = @{ uri = $Uri } }
-            if ($Region.Keys.Count -gt 0) { $Phys.region = $Region }
+            if (@($Region.Keys).Count -gt 0) { $Phys.region = $Region }
             $Result.locations = @(@{ physicalLocation = $Phys })
         }
         $SarifResults += $Result
@@ -551,7 +551,7 @@ function ConvertTo-Sarif {
 }
 
 # ---------------------------------------------------------------------------
-# Target file resolver — handles files and directories, wildcard filters
+# Target file resolver - handles files and directories, wildcard filters
 # ---------------------------------------------------------------------------
 function Resolve-AnalyzerTargets {
     param(
@@ -644,7 +644,7 @@ if (Test-Path -LiteralPath $SettingsPath -PathType Leaf) {
     $Settings = Normalize-AnalyzerSettings -SettingsObject (Read-AnalyzerSettings -FilePath $SettingsPath)
 }
 else {
-    Write-Warning "Settings file not found: $SettingsPath — falling back to built-in defaults."
+    Write-Warning "Settings file not found: $SettingsPath - falling back to built-in defaults."
 }
 
 if ($Settings) {
@@ -655,7 +655,7 @@ if ($Settings) {
     $CompatibilityRulesMissingTargetProfiles = @(
         Get-CompatibilityRulesMissingTargetProfiles -SettingsObject $Settings
     )
-    if ($CompatibilityRulesMissingTargetProfiles.Count -gt 0) {
+    if (@($CompatibilityRulesMissingTargetProfiles).Count -gt 0) {
         throw (
             "Compatibility rules enabled without TargetProfiles in '{0}': {1}. " +
             'Add TargetProfiles for those rules or disable them before running analyzer validation.'
@@ -715,7 +715,7 @@ if (-not $TargetFiles -or @($TargetFiles).Count -eq 0) {
 # ---------------------------------------------------------------------------
 # Run analysis
 # ---------------------------------------------------------------------------
-Write-Section 'PSScriptAnalyzer — Running'
+Write-Section 'PSScriptAnalyzer - Running'
 
 $AllResults = [System.Collections.Generic.List[object]]::new()
 $UseRuntimeSettingsOverrides = (@($CustomRulePath).Count -gt 0) -or $RecurseCustomRulePath -or $IncludeDefaultRules
@@ -765,21 +765,22 @@ $Results = @($AllResults |
         'RuleName', 'ScriptName', 'Line'
     ))
 
+$ResultCount      = @($Results).Count
 $ErrorCount       = @($Results | Where-Object { $_.Severity -eq 'Error'       }).Count
 $WarningCount     = @($Results | Where-Object { $_.Severity -eq 'Warning'     }).Count
 $InformationCount = @($Results | Where-Object { $_.Severity -eq 'Information' }).Count
 
 # ---------------------------------------------------------------------------
-# Console — summary + findings
+# Console - summary + findings
 # ---------------------------------------------------------------------------
-Write-Section 'PSScriptAnalyzer — Summary'
+Write-Section 'PSScriptAnalyzer - Summary'
 Write-Host ('  {0,-15} {1}' -f 'Error',       $ErrorCount)       -ForegroundColor $(if ($ErrorCount -gt 0)       { 'Red'    } else { 'Green' })
 Write-Host ('  {0,-15} {1}' -f 'Warning',     $WarningCount)     -ForegroundColor $(if ($WarningCount -gt 0)     { 'Yellow' } else { 'Green' })
 Write-Host ('  {0,-15} {1}' -f 'Information', $InformationCount) -ForegroundColor $(if ($InformationCount -gt 0) { 'Cyan'   } else { 'Green' })
-Write-Host ('  {0,-15} {1}' -f 'Total',       $Results.Count)    -ForegroundColor DarkGray
+Write-Host ('  {0,-15} {1}' -f 'Total',       $ResultCount)      -ForegroundColor DarkGray
 
-if ($Results.Count -gt 0) {
-    Write-Section 'PSScriptAnalyzer — Findings'
+if ($ResultCount -gt 0) {
+    Write-Section 'PSScriptAnalyzer - Findings'
     foreach ($Finding in $Results) {
         Write-Finding -Finding $Finding
     }
@@ -804,11 +805,11 @@ $ReportLines.Add('--- Summary ---')
 $ReportLines.Add("Error       : $ErrorCount")
 $ReportLines.Add("Warning     : $WarningCount")
 $ReportLines.Add("Information : $InformationCount")
-$ReportLines.Add("Total       : $($Results.Count)")
+$ReportLines.Add("Total       : $ResultCount")
 $ReportLines.Add('')
 $ReportLines.Add('--- Findings ---')
 $ReportLines.Add('')
-if ($Results.Count -gt 0) {
+if ($ResultCount -gt 0) {
     $Table = $Results |
         Format-Table -AutoSize Severity, RuleName, ScriptName, Line, Message |
         Out-String
@@ -822,14 +823,14 @@ Set-Content -LiteralPath $OutTxtPath -Value $ReportLines -Encoding UTF8
 # ---------------------------------------------------------------------------
 # Write JSON report
 # ---------------------------------------------------------------------------
-ConvertTo-Json -InputObject @($Results) -Depth 8 |
+ConvertTo-Json -InputObject @($Results) -Depth 8 -Compress |
     Set-Content -LiteralPath $OutJsonPath -Encoding UTF8
 
 # ---------------------------------------------------------------------------
 # Write SARIF 2.1.0 report
 # ---------------------------------------------------------------------------
 $ProjectRoot = (Get-Location).ProviderPath.TrimEnd('\', '/')
-if ($Results.Count -gt 0) {
+if ($ResultCount -gt 0) {
     $SarifObj = ConvertTo-Sarif -Diagnostics @($Results) -ProjectRoot $ProjectRoot
 }
 else {
@@ -847,7 +848,7 @@ $SarifObj | ConvertTo-Json -Depth 20 |
     Set-Content -Path $OutSarifPath -Encoding UTF8
 
 # ---------------------------------------------------------------------------
-# Console — artifact paths
+# Console - artifact paths
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host "  TXT  : $OutTxtPath"   -ForegroundColor DarkGray
@@ -859,7 +860,7 @@ Write-Host "  SARIF: $OutSarifPath" -ForegroundColor DarkGray
 # ---------------------------------------------------------------------------
 if ($EnableExit) {
     $ExitCode = switch ($ExitCodeMode) {
-        'AllDiagnostics' { [Math]::Min($Results.Count, 255) }
+        'AllDiagnostics' { [Math]::Min($ResultCount, 255) }
         'AnyError'       { if ($ErrorCount -gt 0) { 1 } else { 0 } }
         default          { [Math]::Min($ErrorCount, 255) }   # ErrorsOnly
     }
@@ -872,3 +873,4 @@ if ($EnableExit) {
 
 # Return results object for pipeline / interactive use
 $Results
+

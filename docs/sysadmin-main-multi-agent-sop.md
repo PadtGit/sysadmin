@@ -8,12 +8,11 @@
 
 ## Repo Ground Rules
 
-- Canonical scripts live only under `PowerShell Script/V5` and `PowerShell Script/V7`.
-- The repo-root `Invoke-V5-WhatIfValidation.ps1` is a wrapper for `PowerShell Script/Invoke-V5-WhatIfValidation.ps1`.
+- Canonical scripts live under `PowerShell Script/`.
+- `Invoke-WhatIfValidation.ps1` is the branch-level validator entrypoint.
 - Generated validation output belongs under `artifacts/validation/`.
 - `SKILL.md` at the repo root is the human and agent entrypoint; the deeper repo-specific workflow remains under `.agents/skills/maintain-windows-admin-powershell/SKILL.md`.
-- This repo is PowerShell-only. Keep AutoHotkey automation in a separate repository.
-- Update `PowerShell Script/V7` first, then adapt `PowerShell Script/V5` only where compatibility or parity requires it.
+- This branch supports Windows PowerShell 5.1 only.
 - Preserve `Set-StrictMode -Version 3.0`, `$ErrorActionPreference = 'Stop'`, and `SupportsShouldProcess`.
 - Prefer safe `-WhatIf` preview behavior over hard admin-only preview blocks where the script can truthfully support preview without elevation.
 - Keep result objects compact and structured. Avoid noisy transcript-style output by default.
@@ -41,27 +40,21 @@
 ## Round Order
 
 1. Explore
-   - `repo-explorer` maps the exact file pair or workflow surface, current drift, and required validation commands.
+   - `repo-explorer` maps the exact file or workflow surface, current drift, and required validation commands.
 2. Implement
-   - `script-implementer` makes the smallest patch; when script logic changes, update `PowerShell Script/V7` first and adapt `PowerShell Script/V5` only where compatibility requires it.
+   - `script-implementer` makes the smallest patch while keeping current-state docs and workflow surfaces aligned.
 3. Optional security specialist
    - Use `security-boundary-hardener` when the task touches publisher checks, signatures, output roots, ACLs, canonical path enforcement, or reparse-point handling.
 4. Optional behavioral Pester specialist
    - Use `behavioral-pester-specialist` when tests, WhatIf behavior, or result contracts change.
 5. Validate locally
-   - `validation-runner` executes the analyzer command from `AGENTS.md`, the CI-style Pester configuration, the four trusted local smoke checks, and a sandbox sanity check against the current `.wsb` file and docs.
+   - `validation-runner` executes the analyzer command from `AGENTS.md`, the CI-style Pester configuration, the trusted local smoke checks, and a sandbox sanity check against the current `.wsb` file and docs.
 6. Critic review
    - `code-critic` returns `PASS` or `REVISE` with only concrete risk-based findings.
 7. Playbook sync
    - `playbook-librarian` updates `AGENTS.md` and `docs/*` when workflow wording or durable repo knowledge drifted during the task.
 8. Dispatch GitHub workflow
-   - Run the repo workflow only after local validation and critic review pass:
-
-```powershell
-gh workflow run "PowerShell Validation" --repo PadtGit/sysadmin
-$runId = gh run list --workflow "PowerShell Validation" --repo PadtGit/sysadmin --limit 1 --json databaseId --jq '.[0].databaseId'
-gh run watch $runId --repo PadtGit/sysadmin --exit-status
-```
+   - Run the repo workflow only after local validation and critic review pass.
 
 ## Validation Surface
 
@@ -70,9 +63,3 @@ gh run watch $runId --repo PadtGit/sysadmin --exit-status
 - Keep smoke checks focused on the trusted `-WhatIf` commands documented in `AGENTS.md`.
 - Use `sandbox/sysadmin-main-validation.wsb` as the disposable validation shell for risky scripts. The profile maps the repo read-only, disables networking and vGPU, and opens PowerShell at `C:\Users\WDAGUtilityAccount\Desktop\sysadmin-main`.
 - Publish validation and test artifacts from `artifacts/validation/`.
-
-## Reference Inputs
-
-- OpenAI manager-pattern guidance: [A practical guide to building agents](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf)
-- Current model guidance for Codex-compatible orchestration defaults: [Latest model guide](https://developers.openai.com/api/docs/guides/latest-model)
-- Coding-specialist guidance for Codex-heavy roles: [Introducing GPT-5.3-Codex](https://openai.com/index/introducing-gpt-5-3-codex/)

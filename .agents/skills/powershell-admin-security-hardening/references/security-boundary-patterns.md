@@ -3,7 +3,7 @@
 ## Checklist
 
 1. Confirm script contract before hardening:
-- `#Requires` values remain truthful per shell variant.
+- `#Requires` values remain truthful for this branch runtime.
 - `Set-StrictMode -Version 3.0` and `$ErrorActionPreference = 'Stop'` remain intact unless explicitly changed.
 - Existing result object shape remains stable unless intentionally revised.
 
@@ -29,4 +29,4 @@
 2. Reparse-point checks are present on recursive cleanup and quarantine moves.
 3. Authenticode and publisher checks guard elevated installer execution.
 4. WhatIf output remains usable and side-effect free.
-5. V7-first changes are reflected in V5 with compatibility-safe syntax.
+5. Changes stay compatible with the supported branch runtime.

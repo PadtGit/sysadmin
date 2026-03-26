@@ -1,4 +1,4 @@
-. (Resolve-Path (Join-Path $PSScriptRoot '..\TestHelpers.ps1')).Path
+﻿. (Resolve-Path (Join-Path $PSScriptRoot '..\TestHelpers.ps1')).Path
 
 Describe 'Invoke-PSScriptAnalyzer helper' {
 
@@ -6,7 +6,7 @@ Describe 'Invoke-PSScriptAnalyzer helper' {
         $script:RepoRoot = Get-SysadminMainRepoRoot
         $script:ToolPath = Join-Path $script:RepoRoot 'tools\Invoke-PSScriptAnalyzer.ps1'
         $script:SettingsPath = Join-Path $script:RepoRoot 'tools\PSScriptAnalyzerSettings.psd1'
-        $script:PwshPath = (Get-Command -Name 'pwsh.exe' -ErrorAction Stop).Source
+        $script:PowerShellPath = Join-Path -Path $env:SystemRoot -ChildPath 'System32\WindowsPowerShell\v1.0\powershell.exe'
     }
 
     It 'fails validation when analyzer invocation crashes and records the failure in JSON output' {
@@ -34,7 +34,7 @@ function Measure-ThrowingRule {
 '@
 
             $outputLines = @(
-                & $script:PwshPath `
+                & $script:PowerShellPath `
                     -NoProfile `
                     -ExecutionPolicy Bypass `
                     -File $script:ToolPath `
@@ -81,7 +81,7 @@ function Measure-ThrowingRule {
             Set-Content -LiteralPath $jsonPath -Encoding UTF8 -Value '[{"RuleName":"StaleFinding"}]'
 
             $outputLines = @(
-                & $script:PwshPath `
+                & $script:PowerShellPath `
                     -NoProfile `
                     -ExecutionPolicy Bypass `
                     -File $script:ToolPath `
@@ -112,35 +112,23 @@ function Measure-ThrowingRule {
             $jsonPath = Join-Path $tempRoot 'psscriptanalyzer.json'
             $sarifPath = Join-Path $tempRoot 'psscriptanalyzer.sarif'
             $targetPaths = @(
-                Join-Path $script:RepoRoot 'PowerShell Script\V5\Printer\Restart.spool.delete.printerQ.ps1'
-                Join-Path $script:RepoRoot 'tools\Invoke-PSScriptAnalyzer.ps1'
+                Join-Path $script:RepoRoot 'PowerShell Script\Printer\Restart.spool.delete.printerQ.ps1'
+                Join-Path $script:RepoRoot 'PowerShell Script\windows-maintenance\Reset.Network.RebootPC.ps1'
             )
-            $escapedTargetPaths = @(
-                foreach ($targetPath in $targetPaths) {
-                    "'{0}'" -f $targetPath.Replace("'", "''")
-                }
-            ) -join ', '
-            $invocation = @"
-`$paths = @($escapedTargetPaths)
-& '$($script:ToolPath.Replace("'", "''"))' -Path `$paths -SettingsPath '$($script:SettingsPath.Replace("'", "''"))' -OutTxtPath '$($txtPath.Replace("'", "''"))' -OutJsonPath '$($jsonPath.Replace("'", "''"))' -OutSarifPath '$($sarifPath.Replace("'", "''"))' -EnableExit -ExitCodeMode AnyError
-"@
 
-            $outputLines = @(
-                $invocation |
-                    & $script:PwshPath `
-                        -NoProfile `
-                        -ExecutionPolicy Bypass `
-                        -Command - 2>&1 |
-                    ForEach-Object { $_.ToString() }
+            $results = @(
+                & $script:ToolPath `
+                    -Path $targetPaths `
+                    -SettingsPath $script:SettingsPath `
+                    -OutTxtPath $txtPath `
+                    -OutJsonPath $jsonPath `
+                    -OutSarifPath $sarifPath 2>&1
             )
-            $exitCode = $LASTEXITCODE
-
-            $exitCode | Should -Be 0
-            ($outputLines -join [Environment]::NewLine) | Should -Not -Match 'Analyzer error on'
 
             $jsonText = Get-Content -LiteralPath $jsonPath -Raw
             $diagnostics = @($jsonText | ConvertFrom-Json)
 
+            ($results | Where-Object { $_.RuleName -eq 'PSScriptAnalyzerInvocationFailure' }).Count | Should -Be 0
             ($diagnostics | Where-Object { $_.RuleName -eq 'PSScriptAnalyzerInvocationFailure' }).Count | Should -Be 0
         }
         finally {

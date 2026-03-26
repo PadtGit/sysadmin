@@ -1,13 +1,13 @@
 ---
 name: maintain-windows-admin-powershell
-description: Maintain and review this repository's Windows system administration PowerShell scripts. Use when Codex needs to edit or audit files under PowerShell Script/*, adapt a PowerShell 7 change back to PowerShell 5.1, preserve WhatIf and admin-safe behavior, coordinate implementation and critic passes, delegate security hardening to $powershell-admin-security-hardening, delegate behavioral test design to $behavioral-pester-admin-scripts, or update AGENTS.md with stable repo discoveries after meaningful work.
+description: Maintain and review this repository's Windows system administration PowerShell scripts. Use when Codex needs to edit or audit files under PowerShell Script/*, preserve WhatIf and admin-safe behavior, coordinate implementation and critic passes, delegate security hardening to $powershell-admin-security-hardening, delegate behavioral test design to $behavioral-pester-admin-scripts, or update AGENTS.md with stable repo discoveries after meaningful work.
 ---
 
 # Maintain Windows Admin Powershell
 
 ## Overview
 
-Maintain this repo with a manager-pattern workflow that starts from the canonical nested script tree, keeps PowerShell 7 and PowerShell 5.1 variants aligned, validates WhatIf-safe behavior locally and in GitHub Actions, and records lasting repo knowledge in `AGENTS.md` and `docs/*`.
+Maintain this Windows PowerShell 5.1 branch with a manager-pattern workflow that starts from the canonical script tree, validates WhatIf-safe behavior locally and in GitHub Actions, and records lasting repo knowledge in `AGENTS.md` and `docs/*`.
 
 ## Start Here
 
@@ -23,21 +23,20 @@ Maintain this repo with a manager-pattern workflow that starts from the canonica
 - Canonical path enforcement and reparse-point defense.
 
 2. Use `$behavioral-pester-admin-scripts` when work touches test depth:
-- Converting string/presence checks to behavioral mocks.
+- Converting string or presence checks into behavioral mocks.
 - Verifying WhatIf safety and side-effect suppression.
-- Keeping V7 and V5 behavioral tests aligned.
+- Keeping branch behavior explicit and test-backed.
 
 ## Workflow
 
 ### Round 1: Exploration
 
-- Have `repo-explorer` map the exact script pair or workflow surface before editing.
-- Gather helper scripts, validation commands, workflow triggers, sandbox expectations, and any existing V7/V5 drift that matters to the task.
+- Have `repo-explorer` map the exact script or workflow surface before editing.
+- Gather helper scripts, validation commands, workflow triggers, sandbox expectations, and any current drift that matters to the task.
 
 ### Round 2: Implementation
 
-- Have `script-implementer` update `PowerShell Script/V7` first.
-- Adapt `PowerShell Script/V5` second only where compatibility or parity requires it.
+- Have `script-implementer` update the relevant files under `PowerShell Script/*`.
 - For workflow-only tasks, keep `AGENTS.md`, `docs/*`, `.codex/agents/*.toml`, `.agents/skills/*`, and `.github/workflows/*` aligned in the same change set.
 - Preserve `#Requires`, `[CmdletBinding(SupportsShouldProcess = $true)]`, `Set-StrictMode -Version 3.0`, `$ErrorActionPreference = 'Stop'`, admin gating, and current result-object shape unless the task explicitly changes them.
 - Keep `-WhatIf` usable whenever the existing script already supports that pattern.
@@ -62,7 +61,7 @@ Maintain this repo with a manager-pattern workflow that starts from the canonica
 
 - Hand the changed files or diff to the critic agent after implementation.
 - Require a top-line `PASS` or `REVISE`.
-- Treat correctness, safety, regressions, V7/V5 drift, and broken validation as review blockers.
+- Treat correctness, safety, regressions, and broken validation as review blockers.
 - If the critic returns `REVISE`, fix only the concrete issues with behavioral or safety impact, then rerun focused validation.
 
 ### Round 7: Playbook Sync and Change Analysis
@@ -73,9 +72,8 @@ Maintain this repo with a manager-pattern workflow that starts from the canonica
 
 ## Follow-On Roadmap
 
-1. `v7-v5-parity-and-backporting`
-2. `validation-and-ci-design-for-powershell-ops`
-3. `path-trust-filesystem-boundaries` (split out when security-boundary guidance becomes too large)
+1. `validation-and-ci-design-for-powershell-ops`
+2. `path-trust-filesystem-boundaries`
 
 ## Agent Handoffs
 
