@@ -22,6 +22,7 @@ $RebootDelaySeconds = 5
 
 function Test-IsWindowsSandboxSession {
     [CmdletBinding()]
+    [OutputType([bool])]
     param()
 
     if ([Environment]::UserName -eq 'WDAGUtilityAccount') {

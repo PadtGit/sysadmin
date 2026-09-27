@@ -14,9 +14,24 @@ $IsAdministrator = ([Security.Principal.WindowsPrincipal] [Security.Principal.Wi
     [Security.Principal.WindowsBuiltInRole]::Administrator
 )
 
+function Test-OptionalDirectory {
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    try {
+        return (Test-Path -LiteralPath $Path -PathType Container -ErrorAction Stop)
+    }
+    catch {
+        return $false
+    }
+}
+
 $FirefoxProfilesRoot = Join-Path $LocalApplicationDataPath 'Mozilla\Firefox\Profiles'
 $FirefoxCacheSpecs = @(
-    if (Test-Path -LiteralPath $FirefoxProfilesRoot -PathType Container) {
+    if (Test-OptionalDirectory -Path $FirefoxProfilesRoot) {
         Get-ChildItem -LiteralPath $FirefoxProfilesRoot -Directory -ErrorAction SilentlyContinue |
             Where-Object { -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) } |
             ForEach-Object {
@@ -30,7 +45,7 @@ $FirefoxCacheSpecs = @(
 
 $NewTeamsPackageRoot = Join-Path $LocalApplicationDataPath 'Packages'
 $NewTeamsCacheSpecs = @(
-    if (Test-Path -LiteralPath $NewTeamsPackageRoot -PathType Container) {
+    if (Test-OptionalDirectory -Path $NewTeamsPackageRoot) {
         Get-ChildItem -LiteralPath $NewTeamsPackageRoot -Directory -Filter 'MSTeams_*' -ErrorAction SilentlyContinue |
             Where-Object { -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) } |
             ForEach-Object {

@@ -91,7 +91,7 @@ Describe 'V5 Adobe Acrobat refresh behavior' {
             }
             Assert-MockCalled Start-Process -Times 0 -Exactly -Scope It
         } -Parameters @{
-            packagePath  = 'C:\Windows\System32\notepad.exe'
+            packagePath  = 'C:\Windows\System32\cmd.exe'
             logDirectory = 'C:\ProgramData\sysadmin-main\Logs\AdobeAcrobat'
             storageRoot  = 'C:\ProgramData\sysadmin-main'
             msiexecPath  = 'C:\Windows\System32\msiexec.exe'
