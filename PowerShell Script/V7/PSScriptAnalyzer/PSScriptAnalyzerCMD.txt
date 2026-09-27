@@ -1,0 +1,5 @@
+Installation : 
+PSScriptAnalyzer Install-Module -Name PSScriptAnalyzer -Force -Scope AllUsers
+
+Lance la vérif : 
+Invoke-ScriptAnalyzer -Path "MonScript.ps1" -Settings "PSScriptAnalyzerSettingsFull.psd1"

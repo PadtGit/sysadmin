@@ -1,7 +1,5 @@
 # Security Best Practices Review
 
-> Branch note: `Powershell.5` is the single-runtime Windows PowerShell 5.1 branch. File references below may point to the pre-split mirrored V5/V7 layout that was reviewed on `main`.
-
 ## Executive Summary
 
 This PowerShell admin-scripts repo is in better shape than many operational codebases: I did not find any hardcoded secrets, dynamic code execution (`Invoke-Expression`/`iex`), or download-and-run behavior, and the canonical scripts generally preserve `Set-StrictMode`, `$ErrorActionPreference = 'Stop'`, and `SupportsShouldProcess`.
